@@ -1,0 +1,10 @@
+# Netlify construit l'app à chaque envoi sur la branche main.
+# VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY : à définir dans Netlify > Project configuration > Environment variables
+# (jamais dans ce dépôt). Sans elles, le build s'arrête volontairement (pas de démo en ligne par erreur).
+[build]
+  base = "web"
+  command = "npm ci && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
