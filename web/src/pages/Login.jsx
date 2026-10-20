@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore, ROLES } from '../store.jsx';
 import { Signature, PROVINCE_ENV, EVENEMENT_ENV } from '../ui.jsx';
+import bandeau from '../assets/bandeau_connexion.jpg';
 
 /** Bandeau du haut : logo et nom lus avant connexion (paramètres publics), sinon valeurs de build. */
 function LoginBar({ b }) {
@@ -34,6 +35,7 @@ export default function Login() {
   return (
     <div className="login">
       <LoginBar b={s.branding || {}} />
+      <div className="login-hero" role="img" aria-label="Bâtiment de la coordination, Haut-Uélé" style={{ backgroundImage: `url(${bandeau})` }} />
       <div className="login-panel">
         <p className="eyebrow">Riposte {s.branding?.evenement || EVENEMENT_ENV} · Pilier Surveillance épidémiologique</p>
         <h1>SurvEpi {s.branding?.province_nom || PROVINCE_ENV}</h1>
@@ -91,6 +93,7 @@ export function ChangePassword() {
   return (
     <div className="login">
       <LoginBar b={s.branding || {}} />
+      <div className="login-hero" role="img" aria-label="Bâtiment de la coordination, Haut-Uélé" style={{ backgroundImage: `url(${bandeau})` }} />
       <div className="login-panel">
         <p className="eyebrow">Premier accès</p>
         <h1>Choisir votre mot de passe</h1>
