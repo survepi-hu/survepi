@@ -74,6 +74,10 @@ Paramètres > « Date de mise en service » : avant cette date, une ZS sans fich
 
 Sur chaque fiche journalière enregistrée : « Prendre une photo » (appareil photo du téléphone) ou « Ajouter des fichiers » (plusieurs à la fois, photos ou PDF, 10 Mo max). Les photos sont réduites à 2000 px avant l'envoi (≈ 100 à 600 Ko). Stockage privé Supabase (`pieces-jointes/<zs>/<date>/…`), mêmes droits que la fiche, liens d'accès temporaires (1 h). Suppression : l'auteur tant que la fiche n'est pas validée, ou admin / Team Lead / data manager ; tout est dans le journal d'audit. La page Validation affiche « n PJ ». Sauvegarde : chaque nuit, les nouvelles pièces jointes sont copiées dans Drive (« SurvEpi - Pièces jointes / ZS / date », fichiers nommés `<id>__<nom>`, jamais supprimés de Drive). Retard important : fonction `rattraperPiecesJointes` dans Apps Script. Restauration : `restaurer-drive.mjs … --pieces-jointes=<dossier téléchargé>`.
 
+## Mises à jour du code (GitHub → Netlify)
+
+Netlify (offre gratuite) ne construit un dépôt privé que pour **un seul contributeur** : le compte GitHub `survepi-hu`. Chaque commit envoyé sur `main` doit donc avoir pour **auteur** l'adresse de ce compte (`pilliersurveillanceepidemio@gmail.com`), sinon le déploiement échoue avec « unrecognized Git contributor ».
+
 ## Autres provinces
 
 Une installation = une province : un projet Supabase, un lien, une sauvegarde Drive, des comptes séparés. Le code est le même pour toutes. Le nom de la province, le nom de la DPS, l'épidémie suivie (MVE-17, Mpox…), le code province et le fuseau sont des paramètres (page Paramètres > Province), plus rien n'est écrit en dur.
