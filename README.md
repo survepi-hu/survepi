@@ -72,7 +72,7 @@ Paramètres > « Date de mise en service » : avant cette date, une ZS sans fich
 
 ## Pièces jointes (fiche papier)
 
-Sur chaque fiche journalière enregistrée : « Prendre une photo » (appareil photo du téléphone) ou « Ajouter des fichiers » (plusieurs à la fois, photos ou PDF, 10 Mo max). Les photos sont réduites à 2000 px avant l'envoi (≈ 100 à 600 Ko). Stockage privé Supabase (`pieces-jointes/<zs>/<date>/…`), mêmes droits que la fiche, liens d'accès temporaires (1 h). Suppression : l'auteur tant que la fiche n'est pas validée, ou admin / Team Lead / data manager ; tout est dans le journal d'audit. La page Validation affiche « n PJ ». **Attention** : la sauvegarde Drive copie la base, pas encore les fichiers joints.
+Sur chaque fiche journalière enregistrée : « Prendre une photo » (appareil photo du téléphone) ou « Ajouter des fichiers » (plusieurs à la fois, photos ou PDF, 10 Mo max). Les photos sont réduites à 2000 px avant l'envoi (≈ 100 à 600 Ko). Stockage privé Supabase (`pieces-jointes/<zs>/<date>/…`), mêmes droits que la fiche, liens d'accès temporaires (1 h). Suppression : l'auteur tant que la fiche n'est pas validée, ou admin / Team Lead / data manager ; tout est dans le journal d'audit. La page Validation affiche « n PJ ». Sauvegarde : chaque nuit, les nouvelles pièces jointes sont copiées dans Drive (« SurvEpi - Pièces jointes / ZS / date », fichiers nommés `<id>__<nom>`, jamais supprimés de Drive). Retard important : fonction `rattraperPiecesJointes` dans Apps Script. Restauration : `restaurer-drive.mjs … --pieces-jointes=<dossier téléchargé>`.
 
 ## Autres provinces
 

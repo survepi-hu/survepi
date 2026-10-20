@@ -8,14 +8,19 @@
 // Option --recreer-comptes (avec SUPABASE_URL et SUPABASE_SERVICE_KEY) : recrée un compte de connexion
 // pour chaque acteur actif qui a un e-mail, puis lui envoie un lien pour choisir son mot de passe.
 // Les mots de passe ne sont jamais sauvegardés sur Drive.
+//
+// Option --pieces-jointes=<dossier> (avec SUPABASE_URL et SUPABASE_SERVICE_KEY) : renvoie dans le stockage les photos /
+// scans des fiches. <dossier> = « SurvEpi - Pièces jointes » téléchargé depuis Drive et décompressé. Les fichiers
+// s'appellent <id>__<nom> : l'id retrouve leur emplacement d'origine dans la sauvegarde.
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 import pg from 'pg';
 
-const ORDRE = ['settings', 'actors', 'health_zones', 'assignments', 'daily_reports', 'report_versions', 'validations',
+const ORDRE = ['settings', 'actors', 'health_zones', 'assignments', 'daily_reports', 'report_attachments', 'report_versions', 'validations',
   'investigations', 'contacts', 'contact_followups', 'deferrals', 'notifications', 'audit_logs'];
 const [file] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const recreer = process.argv.includes('--recreer-comptes');
+const dossierPj = (process.argv.find((a) => a.startsWith('--pieces-jointes=')) || '').split('=').slice(1).join('=');
 if (!file || !process.env.DATABASE_URL) { console.error('Usage : DATABASE_URL=... node restaurer-drive.mjs <fichier.json.gz> [--recreer-comptes]'); process.exit(1); }
 
 const raw = fs.readFileSync(file);
@@ -76,5 +81,23 @@ if (recreer) {
     await fetch(`${url}/auth/v1/recover`, { method: 'POST', headers: h, body: JSON.stringify({ email: a.email }) });
     console.log(`Compte recréé, lien envoyé : ${a.nom} <${a.email}>`);
   }
+}
+if (dossierPj) {
+  const url = process.env.SUPABASE_URL?.replace(/\/+$/, ''), key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) throw new Error('SUPABASE_URL et SUPABASE_SERVICE_KEY requis pour --pieces-jointes');
+  const parId = new Map((dump.tables.report_attachments || []).map((p) => [p.id, p]));
+  const fichiers = [];
+  const parcourir = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = `${d}/${e.name}`; if (e.isDirectory()) parcourir(f); else fichiers.push(f); } };
+  parcourir(dossierPj);
+  let ok = 0, inconnus = 0, erreurs = 0;
+  for (const f of fichiers) {
+    const id = (f.split('/').pop().match(/^([0-9a-f-]{36})__/) || [])[1];
+    const p = id && parId.get(id);
+    if (!p) { inconnus++; continue; }
+    const r = await fetch(`${url}/storage/v1/object/pieces-jointes/${p.path.split('/').map(encodeURIComponent).join('/')}`, {
+      method: 'POST', headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': p.type, 'x-upsert': 'true' }, body: fs.readFileSync(f) });
+    if (r.ok) ok++; else { erreurs++; console.error(`${p.nom} : HTTP ${r.status} ${(await r.text()).slice(0, 120)}`); }
+  }
+  console.log(`Pièces jointes renvoyées : ${ok}${erreurs ? `, en erreur : ${erreurs}` : ''}${inconnus ? `, fichiers non reconnus ignorés : ${inconnus}` : ''}.`);
 }
 await db.end();

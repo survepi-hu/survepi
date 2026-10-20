@@ -9,7 +9,7 @@ Chaque nuit vers 23:30 (heure d'Isiro), un dossier `SurvEpi AAAA-MM-JJ 23.30` ap
 | `SurvEpi sauvegarde AAAA-MM-JJ` (Google Sheet) | Lire les données sans outil : un onglet par table, un onglet Compteurs |
 | `survepi-AAAAMMJJ-HHMM.json.gz` | Restaurer la base à l'identique (script `scripts/restaurer-drive.mjs`) |
 
-Les 90 dernières nuits sont gardées (réglable). Un e-mail de compte rendu part chaque nuit, et un message d'alerte en cas d'échec. L'application affiche aussi « Sauvegarde Drive OK » ou une alerte rouge sur l'accueil (admin, Team Lead, data manager) et dans Paramètres.
+Les 90 dernières nuits sont gardées (réglable). Les **pièces jointes** des fiches (photos, scans) sont copiées une seule fois chacune dans le sous-dossier `SurvEpi - Pièces jointes / <ZS> / <date>` et n'en sont jamais supprimées. Gros retard (première fois, ou après une panne) : exécuter la fonction `rattraperPiecesJointes`, autant de fois que le journal indique des pièces restantes. Un e-mail de compte rendu part chaque nuit, et un message d'alerte en cas d'échec. L'application affiche aussi « Sauvegarde Drive OK » ou une alerte rouge sur l'accueil (admin, Team Lead, data manager) et dans Paramètres.
 
 ## Installation (15 minutes, une seule fois)
 
@@ -43,7 +43,7 @@ Les 90 dernières nuits sont gardées (réglable). Un e-mail de compte rendu par
    cd scripts && npm install
    DATABASE_URL="postgresql://postgres:<mdp>@db.<NOUVEAU_REF>.supabase.co:5432/postgres" \
    SUPABASE_URL="https://<NOUVEAU_REF>.supabase.co" SUPABASE_SERVICE_KEY="<clé service_role>" \
-   node restaurer-drive.mjs survepi-20261018-2330.json.gz --recreer-comptes
+   node restaurer-drive.mjs survepi-20261018-2330.json.gz --recreer-comptes --pieces-jointes="$HOME/Downloads/SurvEpi - Pièces jointes"
    ```
    Le script refuse d'écrire dans une base qui contient déjà des données. Il recharge tout en une seule transaction (tout ou rien), garde les heures de soumission, les validations et l'audit d'origine, puis compare les compteurs à ceux de la sauvegarde. Avec `--recreer-comptes`, chaque acteur actif qui a un e-mail reçoit un lien pour choisir son mot de passe.
 3. Redéployer la fonction `rappels` et ses secrets Gmail, mettre la nouvelle URL et la nouvelle clé dans le front (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`), et mettre à jour `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` dans les propriétés du script de sauvegarde.

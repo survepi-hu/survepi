@@ -187,10 +187,11 @@ export const EVENEMENT_ENV = import.meta.env.VITE_EVENEMENT || 'MVE-17';
 export const evenementNom = (settings) => settings?.evenement || EVENEMENT_ENV;
 export const dpsNom = (settings) => settings?.dps_nom || `DPS ${provinceNom(settings)}`;
 
-/** Logo de la riposte s'il a été envoyé dans Paramètres, sinon l'étiquette texte de l'épidémie. */
+/** Logo de la riposte (s'il a été envoyé dans Paramètres) ET étiquette de l'épidémie suivie : les deux toujours visibles. */
 export function BrandMark({ settings }) {
-  if (settings?.logo) return <img className="brand-logo" src={settings.logo} alt="" />;
-  return <span className="brand-mark" aria-hidden="true">{evenementNom(settings)}</span>;
+  const evt = <span className="brand-mark" title="Épidémie / événement suivi">{evenementNom(settings)}</span>;
+  if (!settings?.logo) return evt;
+  return <span className="brand-logo-wrap"><img className="brand-logo" src={settings.logo} alt="" />{evt}</span>;
 }
 
 export function Signature() {

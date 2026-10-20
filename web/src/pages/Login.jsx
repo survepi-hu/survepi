@@ -5,7 +5,7 @@ import bandeau from '../assets/bandeau_connexion.jpg';
 
 /** Bandeau du haut : logo et nom lus avant connexion (paramètres publics), sinon valeurs de build. */
 function LoginBar({ b }) {
-  return <header className="login-bar">{b.logo && <img src={b.logo} alt="" />}<span>SurvEpi {b.province_nom || PROVINCE_ENV}</span></header>;
+  return <header className="login-bar">{b.logo && <img src={b.logo} alt="" />}<span>SurvEpi {b.province_nom || PROVINCE_ENV}</span><span className="brand-mark">{b.evenement || EVENEMENT_ENV}</span></header>;
 }
 
 const DEMO_USERS = [
