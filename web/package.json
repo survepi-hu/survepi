@@ -10,7 +10,8 @@
     "test": "vitest run",
     "preview": "vite preview",
     "sync-shared": "rm -rf ../supabase/functions/_shared/domain && mkdir -p ../supabase/functions/_shared && cp -r src/domain ../supabase/functions/_shared/domain && rm -f ../supabase/functions/_shared/domain/*.test.js",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "build:gas": "esbuild ../drive-backup/src/import-entry.js --bundle --format=iife --global-name=SurvEpiImport --target=es2019 --charset=utf8 --legal-comments=none --banner:js='// Généré par « npm run build:gas » (web/) à partir de web/src/domain : ne pas modifier à la main.' --outfile=../drive-backup/ImportLib.gs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

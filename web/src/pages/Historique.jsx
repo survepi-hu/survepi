@@ -153,6 +153,15 @@ export default function Historique() {
         </p>
       )}
 
+      <Section title="Import automatique (dossier Drive)">
+        <p>Sans passer par cette page : déposer les fichiers (modèle historique, outils Excel DPS) dans le dossier Google Drive <strong>« SurvEpi - Dépôt historique »</strong> du compte de la riposte. Ils sont importés automatiquement toutes les heures, avec les mêmes contrôles qu’ici, puis rangés dans « Traités » avec un rapport ligne par ligne ; un compte rendu part par e-mail.</p>
+        {(() => {
+          const d = s.settings.dernier_import_depot;
+          if (!d?.at) return <p className="muted small">Aucun import automatique pour l’instant.</p>;
+          return <p className="small">Dernier import automatique : {new Date(d.at).toLocaleString('fr-FR', { timeZone: s.settings.fuseau, dateStyle: 'short', timeStyle: 'short' })} · {d.fichiers} fichier(s) · {d.creees} fiche(s) créée(s), {d.remplacees} remplacée(s){d.erreurs ? `, ${d.erreurs} ligne(s) en erreur` : ''}{d.rapport_url && <> · <a href={d.rapport_url} target="_blank" rel="noreferrer">rapport</a></>}</p>;
+        })()}
+      </Section>
+
       <Section title="Historique déjà importé">
         {deja.length === 0 ? <p className="muted">Aucune fiche historique pour l’instant.</p> : (
           <>

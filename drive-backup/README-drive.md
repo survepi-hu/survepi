@@ -26,6 +26,20 @@ Les 90 dernières nuits sont gardées (réglable). Les **pièces jointes** des f
 6. Dans l'éditeur, choisir la fonction `installer` et cliquer « Exécuter ». Accepter les autorisations Google (Drive, Sheets, envoi d'e-mails, accès externe).
 7. Choisir `sauvegardeNocturne` et cliquer « Exécuter » une fois pour faire la première sauvegarde tout de suite. Vérifier le dossier Drive et l'e-mail.
 
+## Import automatique de l'historique (dossier de dépôt)
+
+Le même projet Apps Script surveille le dossier **« SurvEpi - Dépôt historique »** (créé par `installer()` à la racine du Drive de la riposte). On y dépose le modèle historique rempli et/ou les outils Excel DPS remplis ; toutes les heures, `importerDepot` :
+
+1. lit les fichiers (Excel converti à la volée, ou Google Sheets) ;
+2. applique les règles de la page Historique de l'app (`ImportLib.gs`, généré depuis le code de l'app par `npm run build:gas`, ne pas modifier à la main) ;
+3. importe les fiches valides (une fiche saisie dans l'app n'est jamais écrasée ; réimporter remplace l'historique des mêmes dates) ;
+4. range les fichiers dans `Traités / <date heure>` avec un **rapport ligne par ligne** (Google Sheet) ;
+5. envoie un compte rendu à `ALERTE_EMAIL` (et `DEPOT_EMAIL` si cette propriété existe).
+
+Les lignes en erreur ne sont pas importées : corriger le fichier selon le rapport et le redéposer. Le dossier de dépôt peut être partagé (en modification) avec les gestionnaires de données ; **pas** le dossier des sauvegardes.
+
+Installation : ajouter au projet les fichiers `Depot.gs` et `ImportLib.gs` (bouton « + » > Script, mêmes noms), remplacer `Sauvegarde.gs` et `appsscript.json`, puis exécuter `installer()` (crée le dossier de dépôt et le déclencheur horaire, en plus du déclencheur nocturne).
+
 ## Règles de sécurité
 
 - Le dossier `SurvEpi - Sauvegardes` ne se partage qu'avec les personnes qui doivent pouvoir restaurer (Team Lead, admin). Il contient les coordonnées des acteurs et toutes les fiches.

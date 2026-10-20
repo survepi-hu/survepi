@@ -38,3 +38,10 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000ad
 select public.supprimer_historique() as supprimees;
 select count(*) filter (where source='historique') as hist_restantes, count(*) filter (where source='saisie') as saisies from daily_reports;
 reset role;
+\echo '--- H7 appel serveur (service_role, script Drive) accepté sans utilisateur'
+set role service_role;
+select set_config('request.jwt.claim.sub', '', false);
+select set_config('request.jwt.claim.role', 'service_role', false);
+select public.import_historique('[{"date":"2026-09-05","zs_id":"isiro","alertes_validees":2,"inv_realisees_jour":2}]', 'Dépôt Drive test');
+reset role;
+select set_config('request.jwt.claim.role', '', false);

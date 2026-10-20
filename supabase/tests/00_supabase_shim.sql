@@ -17,3 +17,5 @@ create function storage.foldername(name text) returns text[] language sql immuta
 grant usage on schema storage to authenticated, anon;
 grant select, insert, delete on storage.objects to authenticated;
 alter table storage.objects enable row level security;
+
+create or replace function auth.role() returns text language sql stable as $$ select nullif(current_setting('request.jwt.claim.role', true), '') $$;

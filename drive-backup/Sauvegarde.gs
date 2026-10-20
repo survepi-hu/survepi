@@ -214,4 +214,10 @@ function installer() {
   });
   ScriptApp.newTrigger('sauvegardeNocturne').timeBased().everyDays(1).atHour(23).nearMinute(30).create();
   Logger.log('Déclencheur créé : chaque nuit vers 23:30 (' + Session.getScriptTimeZone() + ').');
+  // Import automatique : dossier de dépôt + passage toutes les heures
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'importerDepot') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('importerDepot').timeBased().everyHours(1).create();
+  Logger.log('Dossier de dépôt : ' + dossierDepot_().getUrl() + ' (import automatique toutes les heures).');
 }
