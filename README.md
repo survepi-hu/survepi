@@ -74,9 +74,10 @@ Paramètres > « Date de mise en service » : avant cette date, une ZS sans fich
 
 Sur chaque fiche journalière enregistrée : « Prendre une photo » (appareil photo du téléphone) ou « Ajouter des fichiers » (plusieurs à la fois, photos ou PDF, 10 Mo max). Les photos sont réduites à 2000 px avant l'envoi (≈ 100 à 600 Ko). Stockage privé Supabase (`pieces-jointes/<zs>/<date>/…`), mêmes droits que la fiche, liens d'accès temporaires (1 h). Suppression : l'auteur tant que la fiche n'est pas validée, ou admin / Team Lead / data manager ; tout est dans le journal d'audit. La page Validation affiche « n PJ ». Sauvegarde : chaque nuit, les nouvelles pièces jointes sont copiées dans Drive (« SurvEpi - Pièces jointes / ZS / date », fichiers nommés `<id>__<nom>`, jamais supprimés de Drive). Retard important : fonction `rattraperPiecesJointes` dans Apps Script. Restauration : `restaurer-drive.mjs … --pieces-jointes=<dossier téléchargé>`.
 
-## Mises à jour du code (GitHub → Netlify)
+## Mises à jour du code (GitHub, puis Netlify)
 
-Netlify (offre gratuite) ne construit un dépôt privé que pour **un seul contributeur** : le compte GitHub `survepi-hu`. Chaque commit envoyé sur `main` doit donc avoir pour **auteur et committer** l'adresse de ce compte (`pilliersurveillanceepidemio@gmail.com`), sinon le déploiement échoue avec « unrecognized Git contributor ».
+- **GitHub** (`survepi-hu/survepi`, privé) garde le code et l'historique de toutes les versions.
+- **Netlify** n'est plus relié au dépôt : l'offre gratuite n'accepte qu'un contributeur sur un dépôt privé, et bloquait les mises à jour. La publication se fait par envoi direct (connecteur Netlify de Claude, ou glisser le dossier `web/dist` dans l'onglet Deploys). Netlify construit avec `netlify.toml` et les variables `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` enregistrées dans le projet.
 
 ## Autres provinces
 
