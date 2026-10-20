@@ -1,3 +1,4 @@
+import { extension, uid as nouvelId } from '../pieces.js';
 import { appareil, lieuApproximatif } from '../appareil.js';
 // Adaptateur production : Supabase (Postgres + Auth + RLS).
 // Même interface que l'adaptateur démo. Les écritures de fiches faites hors connexion
@@ -123,11 +124,13 @@ export function createSupabaseAdapter(url, key) {
       const followups = [];
       for (let i = 0; i < ids.length; i += 200) followups.push(...ok(await sb.from('contact_followups').select('*').in('contact_id', ids.slice(i, i + 200))));
       const audit = ['admin', 'team_lead'].includes(user?.role) ? ok(await sb.from('audit_logs').select('*').order('at', { ascending: false }).limit(1000)) : [];
+      // Pièces jointes : liste vide si la table n'existe pas encore (base pas encore mise à jour)
+      const attachments = await sb.from('report_attachments').select('*').order('uploaded_at').limit(10000).then(({ data, error }) => (error ? [] : data));
       const versions = ok(await sb.from('report_versions').select('*').order('changed_at', { ascending: false }).limit(500));
       const validations = ok(await sb.from('validations').select('*').order('at', { ascending: false }).limit(1000)).map((v) => ({ ...v, report_id: v.report_id }));
       return {
         settings: Object.fromEntries(settings.map((s) => [s.key, s.value])),
-        zs, assignments, reports, investigations, contacts, deferrals, notifications, followups, audit, versions, validations,
+        zs, assignments, reports, investigations, contacts, deferrals, notifications, followups, audit, versions, validations, attachments,
         actors: actors.map((a) => ({ ...a, zs_ids: assignments.filter((x) => x.actor_id === a.id).map((x) => x.zs_id) })),
       };
     },
@@ -182,6 +185,26 @@ export function createSupabaseAdapter(url, key) {
         onProgress?.(Math.min(i + 300, rows.length));
       }
       return out;
+    },
+    /** Pièces jointes d'une fiche : fichier dans le stockage privé, puis ligne en base (le fichier est retiré si la ligne échoue). */
+    async uploadAttachment(report, { blob, type, nom }, description) {
+      const path = `${report.zs_id}/${report.date}/${nouvelId()}.${extension(type, nom)}`;
+      const up = await sb.storage.from('pieces-jointes').upload(path, blob, { contentType: type, upsert: false });
+      if (up.error) throw new Error(`${nom} : ${up.error.message}`);
+      const { data, error } = await sb.from('report_attachments').insert({ report_id: report.id, zs_id: report.zs_id, date: report.date, path, nom, type, taille: blob.size, description: description || null }).select().single();
+      if (error) { await sb.storage.from('pieces-jointes').remove([path]); throw new Error(`${nom} : ${error.message}`); }
+      return data;
+    },
+    async attachmentUrl(att, telecharger = false) {
+      const { data, error } = await sb.storage.from('pieces-jointes').createSignedUrl(att.path, 3600, telecharger ? { download: att.nom } : undefined);
+      if (error) throw new Error(error.message);
+      return data.signedUrl;
+    },
+    async deleteAttachment(att) {
+      const { data, error } = await sb.from('report_attachments').delete().eq('id', att.id).select();
+      if (error) throw new Error(error.message);
+      if (!data?.length) throw new Error('Suppression refusée : fiche validée, ou pièce envoyée par une autre personne');
+      await sb.storage.from('pieces-jointes').remove([att.path]);
     },
     async supprimerHistorique() { const { data, error } = await sb.rpc('supprimer_historique'); if (error) throw new Error(error.message); return data; },
     async logEvent(action, details) { await sb.rpc('log_event', { p_action: action, p_details: details }); },

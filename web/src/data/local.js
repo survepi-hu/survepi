@@ -76,7 +76,7 @@ export function createLocalAdapter() {
     async signOut() { audit('sessions', user?.id, 'DECONNEXION', null, { appareil: appareil() }); user = null; try { sessionStorage.removeItem(KEY + ':user'); } catch { /* ignore */ } persist(); },
     async loadAll() {
       const actors = db.actors.map((a) => ({ ...a, zs_ids: db.assignments.filter((x) => x.actor_id === a.id).map((x) => x.zs_id) }));
-      return { ...db, actors };
+      return { ...db, attachments: (db.attachments || []).map(({ _data, ...a }) => a), actors };
     },
 
     /** Fiche journalière : insertion / mise à jour avec règles serveur. */
@@ -156,6 +156,23 @@ export function createLocalAdapter() {
       audit('daily_reports', null, 'IMPORT_HISTORIQUE', null, { fichiers: detail, creees: out.creees, remplacees: out.remplacees, ignorees: out.ignorees.length });
       persist(); onProgress?.(rows.length);
       return out;
+    },
+    async uploadAttachment(report, { blob, type, nom }, description) {
+      if (blob.size > 1.5 * 1024 * 1024) throw new Error(`${nom} : trop lourd pour la démo (stockage du navigateur). En production, 10 Mo maximum.`);
+      const dataUrl = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
+      const att = { id: uid(), report_id: report.id, zs_id: report.zs_id, date: report.date, path: `${report.zs_id}/${report.date}/${uid()}`, nom, type, taille: blob.size, description: description || null, uploaded_by: user?.id, uploaded_at: new Date().toISOString(), _data: dataUrl };
+      (db.attachments ||= []).push(att);
+      audit('report_attachments', att.id, 'INSERT', null, { nom, taille: blob.size });
+      try { persist(); } catch { db.attachments.pop(); throw new Error('Stockage de la démo plein : supprimer des pièces jointes'); }
+      return att;
+    },
+    async attachmentUrl(att) { return (db.attachments || []).find((a) => a.id === att.id)?._data || ''; },
+    async deleteAttachment(att) {
+      const r = db.reports.find((x) => x.id === att.report_id);
+      const chef = ['admin', 'team_lead', 'data_manager'].includes(user?.role);
+      if (!chef && (att.uploaded_by !== user?.id || ['valide_zs', 'valide_prov'].includes(r?.statut))) throw new Error('Suppression refusée : fiche validée, ou pièce envoyée par une autre personne');
+      db.attachments = (db.attachments || []).filter((a) => a.id !== att.id);
+      audit('report_attachments', att.id, 'DELETE', { nom: att.nom }, null); persist();
     },
     async supprimerHistorique() {
       const n = db.reports.filter((x) => x.source === 'historique').length;

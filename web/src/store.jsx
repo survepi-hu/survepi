@@ -102,6 +102,19 @@ export function StoreProvider({ children }) {
     markSent: (n, statut = 'envoye') => run(() => adapter.update('notifications', n.id, { statut, envoye_par: user?.id, sent_at: new Date().toISOString() })),
     exportAll: () => adapter.exportAll(),
     connexions: () => adapter.connexions(),
+    attachmentUrl: (att, dl) => adapter.attachmentUrl(att, dl),
+    uploadAttachments: async (report, fichiers, onProgress) => {
+      const ok = [], erreurs = [];
+      for (let i = 0; i < fichiers.length; i++) {
+        try { ok.push(await adapter.uploadAttachment(report, fichiers[i].prepare, fichiers[i].description)); } catch (e) { erreurs.push(e.message); }
+        onProgress?.(i + 1);
+      }
+      await reload();
+      if (ok.length) notify(`${ok.length} pièce(s) jointe(s) ajoutée(s)`);
+      if (erreurs.length) notify(erreurs.join(' · '), 'bad');
+      return { ok, erreurs };
+    },
+    deleteAttachment: (att) => run(() => adapter.deleteAttachment(att), 'Pièce jointe supprimée'),
     logEvent: (a, d) => adapter.logEvent?.(a, d),
     resetDemo: () => run(() => adapter.reset(), 'Données de démonstration régénérées'),
     /** Démo : exécute le moteur de rappels maintenant, comme le ferait le cron serveur. */

@@ -70,6 +70,10 @@ Aperçu avant import (nouvelles, remplacées, gardées, erreurs). Les contrôles
 
 Paramètres > « Date de mise en service » : avant cette date, une ZS sans fiche est « avant la mise en service » (pas « non reçue »). Vide = date de la 1re fiche saisie. Tableau de bord : période « Depuis le début ».
 
+## Pièces jointes (fiche papier)
+
+Sur chaque fiche journalière enregistrée : « Prendre une photo » (appareil photo du téléphone) ou « Ajouter des fichiers » (plusieurs à la fois, photos ou PDF, 10 Mo max). Les photos sont réduites à 2000 px avant l'envoi (≈ 100 à 600 Ko). Stockage privé Supabase (`pieces-jointes/<zs>/<date>/…`), mêmes droits que la fiche, liens d'accès temporaires (1 h). Suppression : l'auteur tant que la fiche n'est pas validée, ou admin / Team Lead / data manager ; tout est dans le journal d'audit. La page Validation affiche « n PJ ». **Attention** : la sauvegarde Drive copie la base, pas encore les fichiers joints.
+
 ## Autres provinces
 
 Une installation = une province : un projet Supabase, un lien, une sauvegarde Drive, des comptes séparés. Le code est le même pour toutes. Le nom de la province, le nom de la DPS, l'épidémie suivie (MVE-17, Mpox…), le code province et le fuseau sont des paramètres (page Paramètres > Province), plus rien n'est écrit en dur.

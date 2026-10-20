@@ -59,7 +59,7 @@ export default function Validation({ go }) {
               {list.map(({ r, v, c, comp, t }) => (
                 <tr key={r.id}>
                   <td>{fmtDate(r.date, true)}</td>
-                  <td><strong>{zsName(s, r.zs_id)}</strong>{r.rapport_nul && <Pill tone="muted">nul</Pill>}</td>
+                  <td><strong>{zsName(s, r.zs_id)}</strong>{r.rapport_nul && <Pill tone="muted">nul</Pill>}{(() => { const n = (s.data.attachments || []).filter((a) => a.report_id === r.id).length; return n ? <Pill tone="info" title="Pièces jointes (fiche papier)">{n} PJ</Pill> : null; })()}</td>
                   <td><StatutPill statut={r.statut} /></td>
                   <td className="n">{fmtTime(r.submitted_at)} {t === 'en_retard' && <Pill tone="warn">retard</Pill>}</td>
                   <td className="n">{pct(comp)}</td>

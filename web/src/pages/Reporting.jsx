@@ -1,3 +1,4 @@
+import PiecesJointes from './PiecesJointes.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
 import { FIELD_BY_KEY, MOTIFS_INVESTIGATION, MOTIFS_SUIVI, SORTIES, applyZeroReport, can, canValidate, carryOver, completeness, compute, emptyReport, isLocked, statusOnSubmit, validate } from '../domain/report.js';
@@ -268,6 +269,8 @@ export default function Reporting() {
           </div>
         )}
       </form>
+
+      <PiecesJointes report={existing} peutAjouter={s.canEditZs(zs.id) && s.role !== 'coordination'} />
 
       {existing && (can('valider_zs', s.role, existing.statut) || canValidate('valider_prov', s.role, existing, s.user.id) || can('retourner', s.role, existing.statut) || can('rouvrir', s.role, existing.statut)) && (
         <Section title="Supervision">
