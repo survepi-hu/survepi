@@ -76,7 +76,7 @@ Sur chaque fiche journalière enregistrée : « Prendre une photo » (appareil p
 
 ## Mises à jour du code (GitHub → Netlify)
 
-Netlify (offre gratuite) ne construit un dépôt privé que pour **un seul contributeur** : le compte GitHub `survepi-hu`. Chaque commit envoyé sur `main` doit donc avoir pour **auteur** l'adresse de ce compte (`pilliersurveillanceepidemio@gmail.com`), sinon le déploiement échoue avec « unrecognized Git contributor ».
+Netlify (offre gratuite) ne construit un dépôt privé que pour **un seul contributeur** : le compte GitHub `survepi-hu`. Chaque commit envoyé sur `main` doit donc avoir pour **auteur et committer** l'adresse de ce compte (`pilliersurveillanceepidemio@gmail.com`), sinon le déploiement échoue avec « unrecognized Git contributor ».
 
 ## Autres provinces
 
