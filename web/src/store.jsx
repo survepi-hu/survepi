@@ -101,6 +101,7 @@ export function StoreProvider({ children }) {
     bulk: (fn, msg) => run(() => fn(adapter), msg),
     markSent: (n, statut = 'envoye') => run(() => adapter.update('notifications', n.id, { statut, envoye_par: user?.id, sent_at: new Date().toISOString() })),
     exportAll: () => adapter.exportAll(),
+    connexions: () => adapter.connexions(),
     logEvent: (a, d) => adapter.logEvent?.(a, d),
     resetDemo: () => run(() => adapter.reset(), 'Données de démonstration régénérées'),
     /** Démo : exécute le moteur de rappels maintenant, comme le ferait le cron serveur. */

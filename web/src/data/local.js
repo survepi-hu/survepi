@@ -1,3 +1,4 @@
+import { appareil } from '../appareil.js';
 // Adaptateur « démo » : données en mémoire, persistées dans le navigateur quand c'est possible.
 // Reproduit les règles serveur (horodatage, verrouillage, versions, workflow, audit)
 // pour que la démo se comporte comme la version Supabase.
@@ -43,7 +44,7 @@ export function createLocalAdapter() {
     async signIn(actorId) {
       user = db.actors.find((a) => a.id === actorId) || null;
       try { sessionStorage.setItem(KEY + ':user', JSON.stringify({ id: user?.id })); } catch { /* ignore */ }
-      audit('sessions', user?.id, 'CONNEXION', null, { nom: user?.nom, role: user?.role });
+      audit('sessions', user?.id, 'CONNEXION', null, { nom: user?.nom, role: user?.role, appareil: appareil() });
       persist();
       return user;
     },
@@ -61,7 +62,18 @@ export function createLocalAdapter() {
       persist();
       return { ok: true, email: a.email, mot_de_passe: `${r()}-${r()}-${r()}`, email_envoye: false, deja_existant: false };
     },
-    async signOut() { audit('sessions', user?.id, 'DECONNEXION', null, null); user = null; try { sessionStorage.removeItem(KEY + ':user'); } catch { /* ignore */ } persist(); },
+    async connexions() {
+      const events = db.audit.filter((x) => x.table_name === 'sessions').slice().sort((a, b) => (a.at < b.at ? 1 : -1));
+      const resume = db.actors.map((a) => {
+        const ev = events.filter((e) => e.row_id === a.id || e.user_id === a.id);
+        const cx = ev.filter((e) => e.action === 'CONNEXION');
+        return { actor_id: a.id, nom: a.nom, role: a.role, email: a.email, actif: a.actif !== false, a_un_compte: true,
+          derniere_connexion: cx[0]?.at || null, derniere_activite: ev[0]?.at || null, sessions_ouvertes: user?.id === a.id ? 1 : 0,
+          connexions_30j: ev.filter((e) => e.action !== 'DECONNEXION' && e.at > new Date(Date.now() - 30 * 864e5).toISOString()).length, compte_cree: null };
+      }).sort((a, b) => ((b.derniere_connexion || '') > (a.derniere_connexion || '') ? 1 : -1));
+      return { resume, events: events.map((e) => ({ ...e, row_id: e.row_id || e.user_id })) };
+    },
+    async signOut() { audit('sessions', user?.id, 'DECONNEXION', null, { appareil: appareil() }); user = null; try { sessionStorage.removeItem(KEY + ':user'); } catch { /* ignore */ } persist(); },
     async loadAll() {
       const actors = db.actors.map((a) => ({ ...a, zs_ids: db.assignments.filter((x) => x.actor_id === a.id).map((x) => x.zs_id) }));
       return { ...db, actors };

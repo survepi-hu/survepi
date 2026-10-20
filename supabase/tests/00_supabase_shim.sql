@@ -1,7 +1,8 @@
 -- Simule le minimum de Supabase pour tester les migrations sur un Postgres nu.
 do $$ begin create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; exception when duplicate_object then null; end $$;
 create schema auth;
-create table auth.users (id uuid primary key);
+create table auth.users (id uuid primary key, last_sign_in_at timestamptz, created_at timestamptz default now());
+create table auth.sessions (id uuid primary key default gen_random_uuid(), user_id uuid, created_at timestamptz default now(), updated_at timestamptz, not_after timestamptz, refreshed_at timestamp, user_agent text, ip inet);
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 grant usage on schema auth to authenticated, anon;
 grant usage on schema public to authenticated;

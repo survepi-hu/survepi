@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../store.jsx';
 import { Section, Table, Empty } from '../ui.jsx';
-import { actorName } from './common.jsx';
 
 const diff = (a, b) => {
   if (!a || !b) return '';
@@ -32,7 +31,7 @@ export default function Audit() {
             <tbody>{list.slice(0, 400).map((a) => (
               <tr key={a.id}>
                 <td className="mono">{new Date(a.at).toLocaleString('fr-FR')}</td>
-                <td>{a.user_nom || actorName(s, a.user_id)}</td>
+                <td>{a.user_nom || s.data.actors.find((x) => x.user_id === a.user_id || x.id === a.user_id)?.nom || (a.user_id ? '–' : 'système')}</td>
                 <td>{a.table_name}<small className="blk muted mono">{a.row_id}</small></td>
                 <td>{a.action}</td>
                 <td className="msg">{a.action === 'UPDATE' ? diff(a.old_data, a.new_data) : a.new_data ? JSON.stringify(a.new_data).slice(0, 140) : ''}</td>

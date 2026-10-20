@@ -18,6 +18,7 @@ import Notifications from './pages/Notifications.jsx';
 import Parametres from './pages/Parametres.jsx';
 import Audit from './pages/Audit.jsx';
 import Historique from './pages/Historique.jsx';
+import Connexions from './pages/Connexions.jsx';
 
 const ALL = null;
 const SUP = ['epidemiologiste', 'validateur', 'team_lead', 'data_manager', 'admin'];
@@ -41,6 +42,7 @@ export const NAV = [
   { k: 'referentiel', label: 'ZS & acteurs', C: Referentiel, roles: ALL },
   { k: 'historique', label: 'Historique', C: Historique, roles: ['admin', 'team_lead', 'data_manager'] },
   { k: 'parametres', label: 'Paramètres', C: Parametres, roles: ['admin', 'team_lead'] },
+  { k: 'connexions', label: 'Connexions', C: Connexions, roles: ['admin', 'team_lead'] },
   { k: 'audit', label: 'Journal d’audit', C: Audit, roles: ['admin', 'team_lead'] },
 ];
 

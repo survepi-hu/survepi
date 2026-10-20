@@ -1,3 +1,4 @@
+import { appareil } from '../appareil.js';
 // Adaptateur production : Supabase (Postgres + Auth + RLS).
 // Même interface que l'adaptateur démo. Les écritures de fiches faites hors connexion
 // sont mises en file d'attente locale et rejouées au retour du réseau.
@@ -37,6 +38,14 @@ export function createSupabaseAdapter(url, key) {
     async branding() { const { data, error } = await sb.rpc('public_branding'); if (error) throw error; return data || {}; },
     async init() {
       user = await loadActor();
+      // Ouverture de l'app avec une session déjà active : notée au plus une fois toutes les 6 h par navigateur
+      if (user) {
+        const k = `survepi-ouverture-${user.id}`;
+        let last = 0; try { last = Number(localStorage.getItem(k) || 0); } catch { /* ignore */ }
+        if (Date.now() - last > 6 * 3600e3) {
+          sb.rpc('log_connexion', { p_action: 'OUVERTURE', p_appareil: appareil() }).then(() => { try { localStorage.setItem(k, String(Date.now())); } catch { /* ignore */ } }, () => {});
+        }
+      }
       window.addEventListener('online', () => api.flush());
       return { user };
     },
@@ -54,10 +63,22 @@ export function createSupabaseAdapter(url, key) {
       ok(await sb.auth.signInWithPassword({ email, password }));
       user = await loadActor();
       if (!user) throw new Error("Compte sans profil acteur actif. Contacter l'administrateur.");
+      sb.rpc('log_connexion', { p_action: 'CONNEXION', p_appareil: appareil() }).then(() => { try { localStorage.setItem(`survepi-ouverture-${user.id}`, String(Date.now())); } catch { /* ignore */ } }, () => {});
       return user;
     },
     async resetPassword(email) { ok(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin })); },
-    async signOut() { await sb.auth.signOut(); user = null; },
+    async signOut() {
+      try { await sb.rpc('log_connexion', { p_action: 'DECONNEXION', p_appareil: appareil() }); } catch { /* journal facultatif */ }
+      await sb.auth.signOut(); user = null;
+    },
+    /** Suivi des connexions (admin, Team Lead) : synthèse par acteur + journal horodaté (90 jours). */
+    async connexions() {
+      const { data: resume, error } = await sb.rpc('connexions_resume');
+      if (error) throw new Error(error.message);
+      const events = ok(await sb.from('audit_logs').select('id,at,user_id,row_id,action,new_data').eq('table_name', 'sessions')
+        .gte('at', new Date(Date.now() - 90 * 864e5).toISOString()).order('at', { ascending: false }).limit(5000));
+      return { resume, events };
+    },
     /** Mot de passe provisoire : changement demandé à la première connexion. */
     async mustChangePassword() {
       const { data } = await sb.auth.getUser();
