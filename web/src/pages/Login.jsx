@@ -66,6 +66,7 @@ export default function Login() {
             </div>
           </form>
         )}
+        <p className="login-privacy">Pour la sécurité des données, chaque connexion est enregistrée : date, heure, appareil, adresse IP et lieu approximatif.</p>
         <Signature />
       </div>
     </div>

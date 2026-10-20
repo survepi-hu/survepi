@@ -21,3 +21,13 @@ set role anon;
 \echo '--- C3 anonyme refusé'
 select public.log_connexion('CONNEXION', 'x');
 reset role;
+\echo '--- C4 IP et pays pris dans les en-têtes du serveur, ville fournie par le navigateur'
+set role authenticated;
+select set_config('request.headers', '{"cf-connecting-ip":"41.243.10.5","cf-ipcountry":"cd","x-forwarded-for":"41.243.10.5, 10.0.0.1"}', false);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+select public.log_connexion('OUVERTURE', 'Android · Chrome (mobile)', '{"ville":"Isiro","region":"Haut-Uélé","reseau":"Vodacom"}');
+select action, new_data->>'ip' ip, new_data->>'pays' pays, new_data->>'ville' ville from audit_logs where table_name='sessions' order by at desc limit 1;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000ad', false);
+select nom, dernier_lieu from public.connexions_resume() where dernier_lieu is not null;
+reset role;
+select public.purger_ip_connexions() as purgees_maintenant;

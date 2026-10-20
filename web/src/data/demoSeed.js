@@ -7,6 +7,7 @@ import { addDays, localParts, hhmmToMin } from '../domain/time.js';
 
 export const DEMO_SETTINGS = {
   evenement: 'MVE-17',
+  pays_habituels: ['CD'],
   province_nom: 'Haut-Uélé',
   province_code: 'HU',
   dps_nom: 'DPS Haut-Uélé',

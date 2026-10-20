@@ -51,6 +51,7 @@ export default function Parametres() {
             </div>
             <span className="field-hint">Affiché dans le menu et sur l’écran de connexion. Utiliser le logo de la DPS ou de la riposte, avec leur accord. Penser à « Enregistrer les paramètres ».</span>
           </div>
+          <Field label="Pays habituels des connexions" hint="Codes pays séparés par des virgules (CD = RDC). Une connexion d’ailleurs est signalée dans Connexions."><input id="p-pays" defaultValue={(f.pays_habituels || ['CD']).join(', ')} readOnly={ro} onBlur={(e) => { const v = e.target.value.toUpperCase().split(/[\s,;]+/).filter((x) => /^[A-Z]{2}$/.test(x)); setF({ ...f, pays_habituels: v.length ? v : ['CD'] }); e.target.value = (v.length ? v : ['CD']).join(', '); }} /></Field>
           <Field label="Code province" hint="Unique dans le pays (HU, TSH…), bloqué dès la 1re fiche"><input id="p-code" value={f.province_code || ''} readOnly={ro || s.data.reports.length > 0} onChange={(e) => setF({ ...f, province_code: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '') })} /></Field>
         </div>
       </Section>

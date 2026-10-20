@@ -1,4 +1,4 @@
-import { appareil } from '../appareil.js';
+import { appareil, lieuApproximatif } from '../appareil.js';
 // Adaptateur production : Supabase (Postgres + Auth + RLS).
 // Même interface que l'adaptateur démo. Les écritures de fiches faites hors connexion
 // sont mises en file d'attente locale et rejouées au retour du réseau.
@@ -43,7 +43,7 @@ export function createSupabaseAdapter(url, key) {
         const k = `survepi-ouverture-${user.id}`;
         let last = 0; try { last = Number(localStorage.getItem(k) || 0); } catch { /* ignore */ }
         if (Date.now() - last > 6 * 3600e3) {
-          sb.rpc('log_connexion', { p_action: 'OUVERTURE', p_appareil: appareil() }).then(() => { try { localStorage.setItem(k, String(Date.now())); } catch { /* ignore */ } }, () => {});
+          lieuApproximatif().then((lieu) => sb.rpc('log_connexion', { p_action: 'OUVERTURE', p_appareil: appareil(), p_lieu: lieu })).then(() => { try { localStorage.setItem(k, String(Date.now())); } catch { /* ignore */ } }, () => {});
         }
       }
       window.addEventListener('online', () => api.flush());
@@ -63,12 +63,12 @@ export function createSupabaseAdapter(url, key) {
       ok(await sb.auth.signInWithPassword({ email, password }));
       user = await loadActor();
       if (!user) throw new Error("Compte sans profil acteur actif. Contacter l'administrateur.");
-      sb.rpc('log_connexion', { p_action: 'CONNEXION', p_appareil: appareil() }).then(() => { try { localStorage.setItem(`survepi-ouverture-${user.id}`, String(Date.now())); } catch { /* ignore */ } }, () => {});
+      lieuApproximatif().then((lieu) => sb.rpc('log_connexion', { p_action: 'CONNEXION', p_appareil: appareil(), p_lieu: lieu })).then(() => { try { localStorage.setItem(`survepi-ouverture-${user.id}`, String(Date.now())); } catch { /* ignore */ } }, () => {});
       return user;
     },
     async resetPassword(email) { ok(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin })); },
     async signOut() {
-      try { await sb.rpc('log_connexion', { p_action: 'DECONNEXION', p_appareil: appareil() }); } catch { /* journal facultatif */ }
+      try { await sb.rpc('log_connexion', { p_action: 'DECONNEXION', p_appareil: appareil(), p_lieu: await lieuApproximatif() }); } catch { /* journal facultatif */ }
       await sb.auth.signOut(); user = null;
     },
     /** Suivi des connexions (admin, Team Lead) : synthèse par acteur + journal horodaté (90 jours). */

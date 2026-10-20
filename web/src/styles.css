@@ -351,3 +351,5 @@ h1, h2 { color: var(--ink); }
 .pill-hist { background: var(--good-bg); color: var(--good); border: 1px dashed var(--good); }
 .dot-hist { background: repeating-linear-gradient(135deg, var(--good) 0 2px, var(--good-bg) 2px 4px); }
 ul.plain { margin: 0 0 12px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+
+.login-privacy { font-size: .8rem; color: rgb(255 255 255 / .8); margin: 18px 0 0; }
