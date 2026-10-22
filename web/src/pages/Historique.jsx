@@ -57,7 +57,7 @@ export default function Historique() {
     const dpsIn = { inv: files.flatMap((f) => f.inv || []), contacts: files.flatMap((f) => f.contacts || []), suivi: files.flatMap((f) => f.suivi || []) };
     const hasDps = dpsIn.inv.length + dpsIn.contacts.length + dpsIn.suivi.length > 0;
     const d = hasDps ? deriveFromDps(dpsIn, s.data.zs, s.np.date) : { fiches: [], notes: null };
-    return { plan: buildPlan({ modele, dps: d.fiches }, { reports: s.data.reports, zsList: s.data.zs, today: s.np.date }), notes: d.notes };
+    return { plan: buildPlan({ modele, dps: d.fiches }, { reports: s.data.reports, zsList: s.data.zs, today: s.np.date, areas: s.data.areas || [] }), notes: d.notes };
   }, [files, s.data.zs, s.data.reports, s.np.date]);
 
   const lignes = plan ? plan.rows.filter((r) => vue === 'toutes' || r.errors.length || r.warnings.length) : [];
@@ -108,7 +108,7 @@ export default function Historique() {
           ]} />
           {notes && (
             <p className="note">
-              Outils DPS : {notes.lignes.inv} investigations, {notes.lignes.contacts} contacts, {notes.lignes.suivi} visites lus.
+              Outils DPS : {notes.lignes.inv} investigations ({notes.confirmes || 0} cas confirmés), {notes.lignes.contacts} contacts, {notes.lignes.suivi} visites lus. Guéris, PPL et décès parmi les confirmés ne figurent pas dans les outils DPS : à compléter dans le modèle.
               {notes.zsInconnues.length > 0 && <> ZS inconnues, lignes ignorées : <strong>{notes.zsInconnues.join(', ')}</strong> (les ajouter dans « ZS & acteurs » puis recharger).</>}
               {notes.sansDate > 0 && <> {notes.sansDate} ligne(s) sans date utilisable ignorée(s).</>}
               {notes.sortiesSansDate > 0 && <> {notes.sortiesSansDate} sortie(s) de suivi sans date non comptée(s).</>}

@@ -14,6 +14,7 @@ const MOTIF_FIELDS = ['motifs_inv', 'motifs_suivi', 'motif_autre', 'justif_repor
 export const HIST_HEADERS = [
   ['date', 'Date'], ['zs', 'Zone de santé'],
   ...FIELDS.map((f) => [f.key, f.label]),
+  ['nouvelles_as', 'Nouvelles AS touchées'],
   ['commentaire', 'Commentaire'], ['source_detail', 'Source'],
 ];
 
@@ -46,7 +47,7 @@ export function parseModele(rows, zsList) {
   rows.forEach((row, i) => {
     if (Object.values(row).every(isBlank)) return;
     const line = i + 2, errors = [], values = {};
-    let date = null, zs = null, commentaire = '', source_detail = '';
+    let date = null, zs = null, commentaire = '', source_detail = '', asNoms = null;
     for (const [h, v] of Object.entries(row)) {
       const k = headerKey(h);
       if (!k) continue;
@@ -54,11 +55,12 @@ export function parseModele(rows, zsList) {
       else if (k === 'zs') { if (!isBlank(v)) { zs = findZs(v); if (!zs) errors.push(`ZS inconnue « ${v} »`); } }
       else if (k === 'commentaire') commentaire = String(v ?? '').trim();
       else if (k === 'source_detail') source_detail = String(v ?? '').trim();
+      else if (k === 'nouvelles_as') { if (!isBlank(v)) asNoms = String(v).split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean); }
       else { const r = num(v); if (r.error) errors.push(`${FIELDS.find((f) => f.key === k).label} : ${r.error}`); else if (r.value !== null) values[k] = r.value; }
     }
     if (!date && !errors.some((e) => e.startsWith('date'))) errors.push('date manquante');
     if (!zs && !errors.some((e) => e.startsWith('ZS'))) errors.push('ZS manquante');
-    out.push({ origine: 'modele', line, date, zs_id: zs?.id || null, values, commentaire, source_detail, errors });
+    out.push({ origine: 'modele', line, date, zs_id: zs?.id || null, values, asNoms, commentaire, source_detail, errors });
   });
   return out;
 }
@@ -81,10 +83,12 @@ export function deriveFromDps({ inv = [], contacts = [], suivi = [] }, zsList, t
   const findZs = zsFinder(zsList);
   const cells = new Map(); // `${zs}|${date}` → compteurs
   const zsDates = new Map(); // zs → { min, max, suivi: bool }
-  const notes = { zsInconnues: new Set(), sansDate: 0, sortiesSansDate: 0, clampIr: 0, clampVus: 0, lignes: { inv: 0, contacts: 0, suivi: 0 } };
+  const notes = { zsInconnues: new Set(), sansDate: 0, sortiesSansDate: 0, clampIr: 0, clampVus: 0, confirmes: 0, lignes: { inv: 0, contacts: 0, suivi: 0 } };
+  const avecClassif = new Set(); // ZS dont le registre renseigne la classification finale : leurs jours sans confirmé valent 0
+  const asPremier = new Map(); // zs → Map(nom normalisé → { nom, date du 1er cas confirmé })
   const cell = (zs, date) => {
     const k = `${zs}|${date}`;
-    if (!cells.has(k)) cells.set(k, { A: 0, Ij: 0, Ir: 0, m24: 0, L: 0, s21: 0, ssym: 0, sper: 0, sdep: 0, vus: new Set(), agents: new Set() });
+    if (!cells.has(k)) cells.set(k, { A: 0, Ij: 0, Ir: 0, m24: 0, CV: 0, CD: 0, L: 0, s21: 0, ssym: 0, sper: 0, sdep: 0, vus: new Set(), agents: new Set() });
     const z = zsDates.get(zs) || { min: date, max: date, suivi: false };
     if (date < z.min) z.min = date; if (date > z.max) z.max = date;
     zsDates.set(zs, z);
@@ -100,6 +104,21 @@ export function deriveFromDps({ inv = [], contacts = [], suivi = [] }, zsList, t
     if (!ok(da)) { notes.sansDate++; continue; }
     notes.lignes.inv++;
     cell(z.id, da).A++;
+    // I. Situation épidémiologique : cas confirmés, comptés à la date du résultat (sinon prélèvement, sinon notification)
+    const classif = norm(col(r, 'Classification finale'));
+    if (classif) avecClassif.add(z.id);
+    if (classif === norm('Confirmé')) {
+      const dc = [d(col(r, 'Date résultat')), d(col(r, 'Date prélèvement')), da].find(ok) || da;
+      const decede = norm(col(r, 'Type événement')) === norm('Décès');
+      cell(z.id, dc)[decede ? 'CD' : 'CV']++;
+      notes.confirmes++;
+      const nomAs = String(col(r, 'Aire de santé') ?? '').trim();
+      if (nomAs) {
+        if (!asPremier.has(z.id)) asPremier.set(z.id, new Map());
+        const m = asPremier.get(z.id), k = norm(nomAs);
+        if (!m.has(k) || m.get(k).date > dc) m.set(k, { nom: nomAs, date: dc });
+      }
+    }
     const di = d(col(r, 'Date début investigation'));
     if (ok(di)) {
       const jour = di < da ? da : di;
@@ -140,15 +159,18 @@ export function deriveFromDps({ inv = [], contacts = [], suivi = [] }, zsList, t
   const out = [];
   for (const [zs, r] of zsDates) {
     for (let date = r.min; date <= r.max; date = addDays(date, 1)) {
-      const c = cells.get(`${zs}|${date}`) || { A: 0, Ij: 0, Ir: 0, m24: 0, L: 0, s21: 0, ssym: 0, sper: 0, sdep: 0, vus: new Set(), agents: new Set() };
+      const c = cells.get(`${zs}|${date}`) || { A: 0, Ij: 0, Ir: 0, m24: 0, CV: 0, CD: 0, L: 0, s21: 0, ssym: 0, sper: 0, sdep: 0, vus: new Set(), agents: new Set() };
+      const epi = avecClassif.has(zs) ? { cas_conf_vivants: c.CV || 0, cas_conf_decedes: c.CD || 0 } : {};
+      const asNoms = avecClassif.has(zs) ? [...(asPremier.get(zs)?.values() || [])].filter((x) => x.date === date).map((x) => x.nom) : null;
       const values = {
+        ...epi,
         alertes_validees: c.A, inv_realisees_jour: c.Ij, inv_realisees_report: c.Ir, inv_moins_24h: c.m24,
         ct_identifies: c.L, ct_listes_24h: c.L, ct_listes_tardifs: 0,
         ct_sortie_21j: c.s21, ct_sortie_symptomatiques: c.ssym, ct_sortie_confirmes: 0, ct_sortie_perdus: c.sper,
         ct_sortie_deplaces: c.sdep, ct_sortie_decedes: 0, ct_sortie_doublons: 0,
       };
       if (r.suivi) { values.ct_vus = c.vus.size; values.reco_actifs = c.agents.size; }
-      out.push({ origine: 'dps', line: null, date, zs_id: zs, values, commentaire: '', source_detail: 'Outils Excel DPS (recalculé)', errors: [] });
+      out.push({ origine: 'dps', line: null, date, zs_id: zs, values, asNoms, commentaire: '', source_detail: 'Outils Excel DPS (recalculé)', errors: [] });
     }
   }
   return { fiches: out, notes: { ...notes, zsInconnues: [...notes.zsInconnues] } };
@@ -158,7 +180,7 @@ export function deriveFromDps({ inv = [], contacts = [], suivi = [] }, zsList, t
  * 3. Plan d'import : fusion (le modèle prime sur les outils DPS, champ par champ), reports en chaîne,
  *    contrôles, et comparaison avec les fiches déjà en base.
  */
-export function buildPlan({ modele = [], dps = [] }, { reports = [], zsList = [], today }) {
+export function buildPlan({ modele = [], dps = [] }, { reports = [], zsList = [], today, areas = [] }) {
   const zsName = Object.fromEntries(zsList.map((z) => [z.id, z.nom]));
   const existing = new Map(reports.map((r) => [`${r.date}|${r.zs_id}`, r]));
   const merged = new Map();
@@ -174,10 +196,20 @@ export function buildPlan({ modele = [], dps = [] }, { reports = [], zsList = []
     if (base) {
       for (const k of Object.keys(f.values)) base.fromDps.delete(k);
       Object.assign(base.values, f.values);
+      if (f.asNoms) { base.asNoms = f.asNoms; base.asModele = true; }
       Object.assign(base, { line: f.line, origine: 'mixte', commentaire: f.commentaire || base.commentaire, source_detail: f.source_detail || base.source_detail });
       base.sources.unshift(f.source_detail || 'Modèle');
-    } else merged.set(key, { ...f, values: { ...f.values }, fromDps: new Set(), sources: [f.source_detail || 'Modèle'] });
+    } else merged.set(key, { ...f, values: { ...f.values }, fromDps: new Set(), asModele: !!f.asNoms, sources: [f.source_detail || 'Modèle'] });
   }
+
+  // Aires de santé : déjà touchées hors de ce lot (valeur initiale, ou fiche gardée en base)
+  const remplacees = new Set([...merged.keys()].filter((k) => existing.get(k)?.source === 'historique'));
+  const asAilleurs = new Map(); // id → date d'une fiche gardée qui la déclare déjà nouvelle (quelle que soit la date)
+  for (const r of reports) {
+    if (remplacees.has(`${r.date}|${r.zs_id}`)) continue;
+    for (const id of r.nouvelles_as || []) asAilleurs.set(id, r.date);
+  }
+  const asParNom = new Map(areas.map((a) => [`${a.zs_id}|${norm(a.nom)}`, a]));
 
   // Reports en chaîne, ZS par ZS, dans l'ordre des dates
   const byZs = new Map();
@@ -186,10 +218,24 @@ export function buildPlan({ modele = [], dps = [] }, { reports = [], zsList = []
   for (const [zs_id, list] of byZs) {
     list.sort((a, b) => (a.date < b.date ? -1 : 1));
     let prev = null; // { date, record }
+    const asLot = new Map(); // id → date (déclarées nouvelles plus tôt dans ce lot)
     for (const f of list) {
       const errors = [...f.errors], warnings = [], calcules = [];
-      const record = { date: f.date, zs_id, source: 'historique', rapport_nul: false, commentaire: f.commentaire || null, source_detail: f.sources.join(' + ').slice(0, 300) };
+      const record = { date: f.date, zs_id, source: 'historique', rapport_nul: false, commentaire: f.commentaire || null, source_detail: f.sources.join(' + ').slice(0, 300), nouvelles_as: [] };
       for (const k of NUM_KEYS) record[k] = f.values[k] ?? null;
+
+      // Nouvelles AS touchées : noms → liste de la ZS ; une AS déjà touchée n'est jamais recomptée
+      for (const nom of f.asNoms || []) {
+        const a = asParNom.get(`${zs_id}|${norm(nom)}`);
+        if (!a) {
+          const msg = `AS « ${nom} » absente de la liste de la ZS (à ajouter dans ZS & acteurs > Aires de santé)`;
+          if (f.asModele) errors.push(msg); else warnings.push(`${msg} : non comptée`);
+          continue;
+        }
+        const avant = (a.touchee_le && a.touchee_le <= f.date ? a.touchee_le : null) || asAilleurs.get(a.id) || asLot.get(a.id);
+        if (avant) { warnings.push(`AS ${a.nom} déjà touchée (${avant}) : pas recomptée`); continue; }
+        if (!record.nouvelles_as.includes(a.id)) record.nouvelles_as.push(a.id);
+      }
 
       // Veille : la fiche précédente du lot, sinon une fiche déjà en base (14 jours max)
       let veille = prev && prev.date >= addDays(f.date, -14) ? prev.record : null;
@@ -225,6 +271,7 @@ export function buildPlan({ modele = [], dps = [] }, { reports = [], zsList = []
       if (action === 'ignoree') warnings.push('déjà saisie dans l’app : la saisie est gardée');
       rows.push({ key: `${f.date}|${zs_id}`, line: f.line, origine: f.origine, date: f.date, zs_id, zs_nom: zsName[zs_id] || zs_id, action, errors, warnings, calcules, record });
       if (!errors.length) prev = { date: f.date, record: ex && ex.source !== 'historique' ? ex : record };
+      if (action === 'nouvelle' || action === 'remplace') for (const id of record.nouvelles_as) asLot.set(id, f.date);
     }
   }
   for (const f of invalid) rows.push({ ...f, zs_nom: zsName[f.zs_id] || f.zs_id || '–', record: null });

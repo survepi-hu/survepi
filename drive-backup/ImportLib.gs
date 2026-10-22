@@ -35,7 +35,38 @@ var SurvEpiImport = (() => {
     ["ct_sortie_doublons", "Doublons retirés"]
   ];
   var FIELDS = [
-    // Investigations
+    // I. Situation épidémiologique : événements du jour seulement (les cumuls sont calculés, jamais saisis)
+    { key: "cas_conf_vivants", label: "Nouveaux cas confirmés vivants", group: "epi", required: true },
+    {
+      key: "cas_conf_decedes",
+      label: "Nouveaux cas confirmés décédés",
+      group: "epi",
+      required: true,
+      help: "Confirmés ce jour et déjà décédés au moment de la confirmation."
+    },
+    {
+      key: "cas_conf_ppl",
+      label: "dont Personnel de Première Ligne (PPL)",
+      group: "epi",
+      required: true,
+      help: "Parmi les nouveaux cas confirmés du jour (vivants + décédés)."
+    },
+    {
+      key: "deces_parmi_confirmes",
+      label: "Nouveaux décès parmi les cas confirmés",
+      group: "epi",
+      required: true,
+      help: "Cas confirmés vivants les jours précédents, décédés aujourd’hui. Ce ne sont pas de nouveaux cas."
+    },
+    { key: "gueris", label: "Nouveaux guéris du jour", group: "epi", required: true },
+    {
+      key: "deces_non_confirmes",
+      label: "Décès probables / communautaires (non confirmés)",
+      group: "epi",
+      required: false,
+      help: "Suivis à part : jamais ajoutés au cumul des décès parmi les cas confirmés."
+    },
+    // II. Investigations
     {
       key: "alertes_validees",
       label: "Alertes validées du jour",
@@ -108,6 +139,8 @@ var SurvEpiImport = (() => {
     const vus = z(r.ct_vus);
     const nonVus = Math.max(0, aSuivre - vus);
     return {
+      cas_conf_total: z(r.cas_conf_vivants) + z(r.cas_conf_decedes),
+      deces_confirmes_jour: z(r.cas_conf_decedes) + z(r.deces_parmi_confirmes),
       inv_non_faites: Math.max(0, A - Ij),
       inv_report_restant: Math.max(0, R - Ir),
       inv_report_sortant: Math.max(0, A - Ij) + Math.max(0, R - Ir),
@@ -139,6 +172,8 @@ var SurvEpiImport = (() => {
       const v = val(f.key);
       if (v !== null && (v < 0 || !Number.isInteger(v))) E(f.key, `${f.label} : entier positif attendu.`);
     }
+    if (val("cas_conf_ppl") !== null && val("cas_conf_ppl") > c.cas_conf_total)
+      E("cas_conf_ppl", `PPL (${val("cas_conf_ppl")}) > nouveaux cas confirmés du jour (${c.cas_conf_total}).`);
     if (val("inv_realisees_jour") !== null && val("alertes_validees") !== null && val("inv_realisees_jour") > val("alertes_validees"))
       E("inv_realisees_jour", "Investigations réalisées du jour (Ij) > alertes validées (A).");
     if (val("inv_realisees_report") !== null && val("inv_report_entrant") !== null && val("inv_realisees_report") > val("inv_report_entrant"))
@@ -220,6 +255,7 @@ var SurvEpiImport = (() => {
     ["date", "Date"],
     ["zs", "Zone de santé"],
     ...FIELDS.map((f) => [f.key, f.label]),
+    ["nouvelles_as", "Nouvelles AS touchées"],
     ["commentaire", "Commentaire"],
     ["source_detail", "Source"]
   ];
@@ -252,7 +288,7 @@ var SurvEpiImport = (() => {
     rows.forEach((row, i) => {
       if (Object.values(row).every(isBlank)) return;
       const line = i + 2, errors = [], values = {};
-      let date = null, zs = null, commentaire = "", source_detail = "";
+      let date = null, zs = null, commentaire = "", source_detail = "", asNoms = null;
       for (const [h, v] of Object.entries(row)) {
         const k = headerKey(h);
         if (!k) continue;
@@ -267,7 +303,9 @@ var SurvEpiImport = (() => {
           }
         } else if (k === "commentaire") commentaire = String(v != null ? v : "").trim();
         else if (k === "source_detail") source_detail = String(v != null ? v : "").trim();
-        else {
+        else if (k === "nouvelles_as") {
+          if (!isBlank(v)) asNoms = String(v).split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean);
+        } else {
           const r = num(v);
           if (r.error) errors.push(`${FIELDS.find((f) => f.key === k).label} : ${r.error}`);
           else if (r.value !== null) values[k] = r.value;
@@ -275,7 +313,7 @@ var SurvEpiImport = (() => {
       }
       if (!date && !errors.some((e) => e.startsWith("date"))) errors.push("date manquante");
       if (!zs && !errors.some((e) => e.startsWith("ZS"))) errors.push("ZS manquante");
-      out.push({ origine: "modele", line, date, zs_id: (zs == null ? void 0 : zs.id) || null, values, commentaire, source_detail, errors });
+      out.push({ origine: "modele", line, date, zs_id: (zs == null ? void 0 : zs.id) || null, values, asNoms, commentaire, source_detail, errors });
     });
     return out;
   }
@@ -294,14 +332,16 @@ var SurvEpiImport = (() => {
   };
   var d = (v) => dateFrom(v).value || null;
   function deriveFromDps({ inv = [], contacts = [], suivi = [] }, zsList, today) {
-    var _a;
+    var _a, _b, _c;
     const findZs = zsFinder(zsList);
     const cells = /* @__PURE__ */ new Map();
     const zsDates = /* @__PURE__ */ new Map();
-    const notes = { zsInconnues: /* @__PURE__ */ new Set(), sansDate: 0, sortiesSansDate: 0, clampIr: 0, clampVus: 0, lignes: { inv: 0, contacts: 0, suivi: 0 } };
+    const notes = { zsInconnues: /* @__PURE__ */ new Set(), sansDate: 0, sortiesSansDate: 0, clampIr: 0, clampVus: 0, confirmes: 0, lignes: { inv: 0, contacts: 0, suivi: 0 } };
+    const avecClassif = /* @__PURE__ */ new Set();
+    const asPremier = /* @__PURE__ */ new Map();
     const cell = (zs, date) => {
       const k = `${zs}|${date}`;
-      if (!cells.has(k)) cells.set(k, { A: 0, Ij: 0, Ir: 0, m24: 0, L: 0, s21: 0, ssym: 0, sper: 0, sdep: 0, vus: /* @__PURE__ */ new Set(), agents: /* @__PURE__ */ new Set() });
+      if (!cells.has(k)) cells.set(k, { A: 0, Ij: 0, Ir: 0, m24: 0, CV: 0, CD: 0, L: 0, s21: 0, ssym: 0, sper: 0, sdep: 0, vus: /* @__PURE__ */ new Set(), agents: /* @__PURE__ */ new Set() });
       const z2 = zsDates.get(zs) || { min: date, max: date, suivi: false };
       if (date < z2.min) z2.min = date;
       if (date > z2.max) z2.max = date;
@@ -327,6 +367,20 @@ var SurvEpiImport = (() => {
       }
       notes.lignes.inv++;
       cell(z2.id, da).A++;
+      const classif = norm(col(r, "Classification finale"));
+      if (classif) avecClassif.add(z2.id);
+      if (classif === norm("Confirmé")) {
+        const dc = [d(col(r, "Date résultat")), d(col(r, "Date prélèvement")), da].find(ok) || da;
+        const decede = norm(col(r, "Type événement")) === norm("Décès");
+        cell(z2.id, dc)[decede ? "CD" : "CV"]++;
+        notes.confirmes++;
+        const nomAs = String((_a = col(r, "Aire de santé")) != null ? _a : "").trim();
+        if (nomAs) {
+          if (!asPremier.has(z2.id)) asPremier.set(z2.id, /* @__PURE__ */ new Map());
+          const m = asPremier.get(z2.id), k = norm(nomAs);
+          if (!m.has(k) || m.get(k).date > dc) m.set(k, { nom: nomAs, date: dc });
+        }
+      }
       const di = d(col(r, "Date début investigation"));
       if (ok(di)) {
         const jour = di < da ? da : di;
@@ -378,14 +432,17 @@ var SurvEpiImport = (() => {
       const c = cell(z2.id, dv);
       zsDates.get(z2.id).suivi = true;
       if (norm(col(r, "Vu/Joint", "Vu")) === "oui") c.vus.add(String(col(r, "ID contact")) || `l${notes.lignes.suivi}`);
-      const ag = String((_a = col(r, "Agent de suivi")) != null ? _a : "").trim();
+      const ag = String((_b = col(r, "Agent de suivi")) != null ? _b : "").trim();
       if (ag) c.agents.add(norm(ag));
     }
     const out = [];
     for (const [zs, r] of zsDates) {
       for (let date = r.min; date <= r.max; date = addDays(date, 1)) {
-        const c = cells.get(`${zs}|${date}`) || { A: 0, Ij: 0, Ir: 0, m24: 0, L: 0, s21: 0, ssym: 0, sper: 0, sdep: 0, vus: /* @__PURE__ */ new Set(), agents: /* @__PURE__ */ new Set() };
+        const c = cells.get(`${zs}|${date}`) || { A: 0, Ij: 0, Ir: 0, m24: 0, CV: 0, CD: 0, L: 0, s21: 0, ssym: 0, sper: 0, sdep: 0, vus: /* @__PURE__ */ new Set(), agents: /* @__PURE__ */ new Set() };
+        const epi = avecClassif.has(zs) ? { cas_conf_vivants: c.CV || 0, cas_conf_decedes: c.CD || 0 } : {};
+        const asNoms = avecClassif.has(zs) ? [...((_c = asPremier.get(zs)) == null ? void 0 : _c.values()) || []].filter((x) => x.date === date).map((x) => x.nom) : null;
         const values = {
+          ...epi,
           alertes_validees: c.A,
           inv_realisees_jour: c.Ij,
           inv_realisees_report: c.Ir,
@@ -405,12 +462,12 @@ var SurvEpiImport = (() => {
           values.ct_vus = c.vus.size;
           values.reco_actifs = c.agents.size;
         }
-        out.push({ origine: "dps", line: null, date, zs_id: zs, values, commentaire: "", source_detail: "Outils Excel DPS (recalculé)", errors: [] });
+        out.push({ origine: "dps", line: null, date, zs_id: zs, values, asNoms, commentaire: "", source_detail: "Outils Excel DPS (recalculé)", errors: [] });
       }
     }
     return { fiches: out, notes: { ...notes, zsInconnues: [...notes.zsInconnues] } };
   }
-  function buildPlan({ modele = [], dps = [] }, { reports = [], zsList = [], today }) {
+  function buildPlan({ modele = [], dps = [] }, { reports = [], zsList = [], today, areas = [] }) {
     var _a;
     const zsName = Object.fromEntries(zsList.map((z2) => [z2.id, z2.nom]));
     const existing = new Map(reports.map((r) => [`${r.date}|${r.zs_id}`, r]));
@@ -433,10 +490,24 @@ var SurvEpiImport = (() => {
       if (base) {
         for (const k of Object.keys(f.values)) base.fromDps.delete(k);
         Object.assign(base.values, f.values);
+        if (f.asNoms) {
+          base.asNoms = f.asNoms;
+          base.asModele = true;
+        }
         Object.assign(base, { line: f.line, origine: "mixte", commentaire: f.commentaire || base.commentaire, source_detail: f.source_detail || base.source_detail });
         base.sources.unshift(f.source_detail || "Modèle");
-      } else merged.set(key, { ...f, values: { ...f.values }, fromDps: /* @__PURE__ */ new Set(), sources: [f.source_detail || "Modèle"] });
+      } else merged.set(key, { ...f, values: { ...f.values }, fromDps: /* @__PURE__ */ new Set(), asModele: !!f.asNoms, sources: [f.source_detail || "Modèle"] });
     }
+    const remplacees = new Set([...merged.keys()].filter((k) => {
+      var _a2;
+      return ((_a2 = existing.get(k)) == null ? void 0 : _a2.source) === "historique";
+    }));
+    const asAilleurs = /* @__PURE__ */ new Map();
+    for (const r of reports) {
+      if (remplacees.has(`${r.date}|${r.zs_id}`)) continue;
+      for (const id of r.nouvelles_as || []) asAilleurs.set(id, r.date);
+    }
+    const asParNom = new Map(areas.map((a) => [`${a.zs_id}|${norm(a.nom)}`, a]));
     const byZs = /* @__PURE__ */ new Map();
     for (const f of merged.values()) {
       if (!byZs.has(f.zs_id)) byZs.set(f.zs_id, []);
@@ -446,10 +517,26 @@ var SurvEpiImport = (() => {
     for (const [zs_id, list] of byZs) {
       list.sort((a, b) => a.date < b.date ? -1 : 1);
       let prev = null;
+      const asLot = /* @__PURE__ */ new Map();
       for (const f of list) {
         const errors = [...f.errors], warnings = [], calcules = [];
-        const record = { date: f.date, zs_id, source: "historique", rapport_nul: false, commentaire: f.commentaire || null, source_detail: f.sources.join(" + ").slice(0, 300) };
+        const record = { date: f.date, zs_id, source: "historique", rapport_nul: false, commentaire: f.commentaire || null, source_detail: f.sources.join(" + ").slice(0, 300), nouvelles_as: [] };
         for (const k of NUM_KEYS) record[k] = (_a = f.values[k]) != null ? _a : null;
+        for (const nom of f.asNoms || []) {
+          const a = asParNom.get(`${zs_id}|${norm(nom)}`);
+          if (!a) {
+            const msg = `AS « ${nom} » absente de la liste de la ZS (à ajouter dans ZS & acteurs > Aires de santé)`;
+            if (f.asModele) errors.push(msg);
+            else warnings.push(`${msg} : non comptée`);
+            continue;
+          }
+          const avant = (a.touchee_le && a.touchee_le <= f.date ? a.touchee_le : null) || asAilleurs.get(a.id) || asLot.get(a.id);
+          if (avant) {
+            warnings.push(`AS ${a.nom} déjà touchée (${avant}) : pas recomptée`);
+            continue;
+          }
+          if (!record.nouvelles_as.includes(a.id)) record.nouvelles_as.push(a.id);
+        }
         let veille = prev && prev.date >= addDays(f.date, -14) ? prev.record : null;
         if (!veille) for (let i = 1; i <= 14 && !veille; i++) {
           const r = existing.get(`${addDays(f.date, -i)}|${zs_id}`);
@@ -485,6 +572,7 @@ var SurvEpiImport = (() => {
         if (action === "ignoree") warnings.push("déjà saisie dans l’app : la saisie est gardée");
         rows.push({ key: `${f.date}|${zs_id}`, line: f.line, origine: f.origine, date: f.date, zs_id, zs_nom: zsName[zs_id] || zs_id, action, errors, warnings, calcules, record });
         if (!errors.length) prev = { date: f.date, record: ex && ex.source !== "historique" ? ex : record };
+        if (action === "nouvelle" || action === "remplace") for (const id of record.nouvelles_as) asLot.set(id, f.date);
       }
     }
     for (const f of invalid) rows.push({ ...f, zs_nom: zsName[f.zs_id] || f.zs_id || "–", record: null });
@@ -508,7 +596,7 @@ var SurvEpiImport = (() => {
       return [h, (_a = r[j]) != null ? _a : ""];
     })));
   }
-  function planifier(classeurs, { zsList, reports, today }) {
+  function planifier(classeurs, { zsList, reports, today, areas = [] }) {
     const norm2 = (s) => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
     const modele = [], inv = [], contacts = [], suivi = [], lus = [];
     for (const c of classeurs) {
@@ -535,7 +623,7 @@ var SurvEpiImport = (() => {
       lus.push({ nom: c.nom, types });
     }
     const d2 = inv.length + contacts.length + suivi.length ? deriveFromDps({ inv, contacts, suivi }, zsList, today) : { fiches: [], notes: null };
-    const plan = buildPlan({ modele, dps: d2.fiches }, { reports, zsList, today });
+    const plan = buildPlan({ modele, dps: d2.fiches }, { reports, zsList, today, areas });
     return { plan, notes: d2.notes, lus, fiches: recordsToImport(plan) };
   }
   return __toCommonJS(import_entry_exports);

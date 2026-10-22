@@ -76,6 +76,7 @@ function importerDepot() {
     var r = SurvEpiImport.planifier(classeurs, {
       zsList: lireTable_(c, 'health_zones', 'id'),
       reports: lireTable_(c, 'daily_reports', 'date,zs_id'),
+      areas: (function () { try { return lireTable_(c, 'health_areas', 'id'); } catch (e) { return []; } })(),
       today: Utilities.formatDate(t0, tz, 'yyyy-MM-dd'),
     });
     var detail = ('Dépôt Drive ' + stamp + ' : ' + fichiers.map(function (f) { return f.getName(); }).join(', ')).slice(0, 200);

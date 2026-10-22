@@ -6,7 +6,7 @@ import { appareil, lieuApproximatif } from '../appareil.js';
 import { createClient } from '@supabase/supabase-js';
 import { addDays, today } from '../domain/time.js';
 
-const TABLE = { zs: 'health_zones', reports: 'daily_reports', followups: 'contact_followups', investigations: 'investigations', contacts: 'contacts', deferrals: 'deferrals', actors: 'actors', notifications: 'notifications' };
+const TABLE = { areas: 'health_areas', zs: 'health_zones', reports: 'daily_reports', followups: 'contact_followups', investigations: 'investigations', contacts: 'contacts', deferrals: 'deferrals', actors: 'actors', notifications: 'notifications' };
 const GENERATED = { daily_reports: ['inv_non_faites', 'inv_report_sortant', 'ct_sorties', 'ct_a_suivre'], contacts: ['j1', 'j21', 'liste_24h'] };
 const QUEUE = 'survepi-outbox';
 const clean = (table, row) => {
@@ -125,12 +125,13 @@ export function createSupabaseAdapter(url, key) {
       for (let i = 0; i < ids.length; i += 200) followups.push(...ok(await sb.from('contact_followups').select('*').in('contact_id', ids.slice(i, i + 200))));
       const audit = ['admin', 'team_lead'].includes(user?.role) ? ok(await sb.from('audit_logs').select('*').order('at', { ascending: false }).limit(1000)) : [];
       // Pièces jointes : liste vide si la table n'existe pas encore (base pas encore mise à jour)
+      const areas = await sb.from('health_areas').select('*').order('nom').then(({ data, error }) => (error ? [] : data));
       const attachments = await sb.from('report_attachments').select('*').order('uploaded_at').limit(10000).then(({ data, error }) => (error ? [] : data));
       const versions = ok(await sb.from('report_versions').select('*').order('changed_at', { ascending: false }).limit(500));
       const validations = ok(await sb.from('validations').select('*').order('at', { ascending: false }).limit(1000)).map((v) => ({ ...v, report_id: v.report_id }));
       return {
         settings: Object.fromEntries(settings.map((s) => [s.key, s.value])),
-        zs, assignments, reports, investigations, contacts, deferrals, notifications, followups, audit, versions, validations, attachments,
+        zs, areas, assignments, reports, investigations, contacts, deferrals, notifications, followups, audit, versions, validations, attachments,
         actors: actors.map((a) => ({ ...a, zs_ids: assignments.filter((x) => x.actor_id === a.id).map((x) => x.zs_id) })),
       };
     },
@@ -149,6 +150,7 @@ export function createSupabaseAdapter(url, key) {
       }
     },
     async insert(table, row) { return ok(await sb.from(TABLE[table] || table).insert(clean(TABLE[table], row)).select().single()); },
+    async remove(table, id) { ok(await sb.from(TABLE[table] || table).delete().eq('id', id)); },
     async update(table, id, patch) { return ok(await sb.from(TABLE[table] || table).update(clean(TABLE[table], patch)).eq('id', id).select().single()); },
     async upsertFollowup(row) { return ok(await sb.from('contact_followups').upsert(clean('contact_followups', row), { onConflict: 'contact_id,jour' }).select().single()); },
     async saveSettings(settings) {
@@ -161,7 +163,7 @@ export function createSupabaseAdapter(url, key) {
     },
     /** Copie intégrale de toutes les tables visibles (sauvegarde Excel depuis l'application). */
     async exportAll() {
-      const tables = ['settings', 'health_zones', 'actors', 'assignments', 'daily_reports', 'validations', 'report_versions', 'investigations', 'contacts', 'contact_followups', 'deferrals', 'notifications', 'audit_logs'];
+      const tables = ['settings', 'health_zones', 'health_areas', 'actors', 'assignments', 'daily_reports', 'report_attachments', 'validations', 'report_versions', 'investigations', 'contacts', 'contact_followups', 'deferrals', 'notifications', 'audit_logs'];
       const out = {};
       for (const t of tables) {
         const rows = [];

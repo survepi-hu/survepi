@@ -6,10 +6,12 @@ import { addDays, dateRange, fmtTime, fmtDate } from '../domain/time.js';
 import { tauxSortieJ21, anciennete } from '../domain/registry.js';
 import { Band, Bars, LineChart, Section, Table, Tabs, Pill, pct, num, toneOfRate } from '../ui.jsx';
 import { useDay, CELL_TONE, CatPill } from './common.jsx';
+import { situationProvince, rapportPrecedent, nouveautes, detection, ETATS } from '../domain/epi.js';
+import { FIELD_BY_KEY } from '../domain/report.js';
 
 export default function Dashboard() {
   const s = useStore();
-  const [tab, setTab] = useState('province');
+  const [tab, setTab] = useState('epi');
   const [span, setSpan] = useState(21);
   const end = s.date;
   // « Depuis le début » : à partir de la plus ancienne fiche (historique importé compris)
@@ -24,6 +26,16 @@ export default function Dashboard() {
     const reps = dateRange(from, end).map((d) => s.idx.get(`${d}|${z.id}`)).filter((r) => r && isSubmitted(r));
     return { z, cat: zsCategory(z, end, s.settings), t: aggregate(reps), last: reps[reps.length - 1] || null };
   }), [s.visibleZs, from, end, s.idx, s.settings]);
+  const areas = s.data.areas || [];
+  const sit = useMemo(() => situationProvince(s.visibleZs, end, s.data.reports, areas), [s.visibleZs, end, s.data.reports, areas]);
+  const sitSeries = useMemo(() => (tab === 'epi' ? dateRange(from, end).map((d) => ({ d, t: situationProvince(s.visibleZs, d, s.data.reports, areas).totaux })) : []), [tab, s.visibleZs, from, end, s.data.reports, areas]);
+  const nouv = useMemo(() => s.visibleZs.map((z) => {
+    const r = s.idx.get(`${end}|${z.id}`);
+    if (!r || !isSubmitted(r)) return { z, r: null };
+    const prec = rapportPrecedent(z.id, end, s.data.reports);
+    const vers = s.data.versions.filter((x) => x.report_id === r.id);
+    return { z, r, prec, compte: detection(r, prec, vers).compte, items: nouveautes(r, prec, vers) };
+  }), [s.visibleZs, end, s.idx, s.data.reports, s.data.versions]);
   const ser = (k) => series.map((d) => ({ x: d.date, y: d[k] }));
   const g = day.groups;
 
@@ -32,7 +44,7 @@ export default function Dashboard() {
       <header className="page-head">
         <h1>Tableau de bord</h1>
         <div className="row">
-          <Tabs value={tab} onChange={setTab} tabs={[['province', 'Provincial'], ['inv', 'Investigations'], ['ct', 'Contacts'], ['groupes', 'Touchées / préparation'], ['se', 'Semaines épi']]} />
+          <Tabs value={tab} onChange={setTab} tabs={[['epi', 'Situation épidémio'], ['nouv', 'Nouveautés du jour'], ['province', 'Provincial'], ['inv', 'Investigations'], ['ct', 'Contacts'], ['groupes', 'Touchées / préparation'], ['se', 'Semaines épi']]} />
           <label className="inline">Période
             <select id="span" value={span} onChange={(e) => setSpan(Number(e.target.value))}>
               {[7, 14, 21, 30, 42, 90, 180].map((n) => <option key={n} value={n}>{n} jours</option>)}
@@ -41,6 +53,85 @@ export default function Dashboard() {
           </label>
         </div>
       </header>
+
+      {tab === 'epi' && (
+        <>
+          <Band items={[
+            { label: 'Nouveaux cas confirmés', value: num(sit.totaux.total), sub: `${num(sit.totaux.vivants)} vivants · ${num(sit.totaux.decedes)} décédés`, tone: sit.totaux.total ? 'bad' : null },
+            { label: 'dont PPL', value: num(sit.totaux.ppl) },
+            { label: 'Nouvelles AS touchées', value: num(sit.totaux.nouvelles_as.length), sub: sit.totaux.nouvelles_as.join(', ') || null, tone: sit.totaux.nouvelles_as.length ? 'warn' : null },
+            { label: 'AS touchées (cumul)', value: num(sit.totaux.as_touchees) },
+            { label: 'Jours sans nouveau cas confirmé', value: sit.totaux.jours_sans_cas === null ? '–' : num(sit.totaux.jours_sans_cas), sub: 'plus petit écart, toutes ZS' },
+            { label: 'Nouveaux guéris', value: num(sit.totaux.gueris) },
+            { label: 'Nouveaux décès parmi confirmés', value: num(sit.totaux.deces_parmi) },
+          ]} />
+          <Band items={[
+            { label: 'Cumul cas confirmés', value: num(sit.totaux.confirmes) },
+            { label: 'Cumul décès (confirmés)', value: num(sit.totaux.deces), sub: `létalité ${sit.totaux.letalite === null ? 'NA' : pct(sit.totaux.letalite, 1)}` },
+            { label: 'Cumul guéris', value: num(sit.totaux.gueris_cumul) },
+            { label: 'Cumul PPL confirmés', value: num(sit.totaux.ppl_cumul) },
+            { label: 'Cas confirmés en cours', value: num(sit.totaux.actifs) },
+            { label: 'Décès probables / communautaires (cumul, à part)', value: num(sit.totaux.deces_nc_cumul) },
+          ]} />
+          <Section title={`Situation par ZS au ${fmtDate(end)}`}>
+            <Table>
+              <thead><tr><th>ZS</th><th className="n">Conf. vivants</th><th className="n">Conf. décédés</th><th className="n">dont PPL</th><th className="n">Décès parmi conf.</th><th className="n">Guéris</th><th>Nouvelles AS</th><th className="n">AS touchées</th><th className="n">Jours sans cas</th><th className="n">Cumul conf.</th><th className="n">Cumul décès</th><th className="n">Cumul guéris</th><th className="n">Cumul PPL</th><th className="n">En cours</th></tr></thead>
+              <tbody>
+                {sit.rows.map((x) => (
+                  <tr key={x.zs.id}>
+                    <td><strong>{x.zs.nom}</strong>{!x.report && <Pill tone="muted">pas de fiche</Pill>}</td>
+                    <td className="n">{x.jour ? num(x.jour.vivants) : '–'}</td><td className="n">{x.jour ? num(x.jour.decedes) : '–'}</td><td className="n">{x.jour ? num(x.jour.ppl) : '–'}</td>
+                    <td className="n">{x.jour ? num(x.jour.deces_parmi) : '–'}</td><td className="n">{x.jour ? num(x.jour.gueris) : '–'}</td>
+                    <td>{x.nouvelles_as.join(', ') || <span className="muted">–</span>}</td>
+                    <td className="n">{x.as_total ? `${x.as_touchees} / ${x.as_total}` : num(x.as_touchees)}</td>
+                    <td className="n">{x.jours_sans_cas === null ? '–' : num(x.jours_sans_cas)}</td>
+                    <td className="n">{num(x.cumuls.confirmes)}</td><td className="n">{num(x.cumuls.deces)}</td><td className="n">{num(x.cumuls.gueris)}</td><td className="n">{num(x.cumuls.ppl)}</td><td className="n">{num(x.cumuls.actifs)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr><th>Province</th><td className="n">{num(sit.totaux.vivants)}</td><td className="n">{num(sit.totaux.decedes)}</td><td className="n">{num(sit.totaux.ppl)}</td><td className="n">{num(sit.totaux.deces_parmi)}</td><td className="n">{num(sit.totaux.gueris)}</td><td>{sit.totaux.nouvelles_as.length || '–'}</td><td className="n">{num(sit.totaux.as_touchees)}</td><td className="n">{sit.totaux.jours_sans_cas ?? '–'}</td><td className="n">{num(sit.totaux.confirmes)}</td><td className="n">{num(sit.totaux.deces)}</td><td className="n">{num(sit.totaux.gueris_cumul)}</td><td className="n">{num(sit.totaux.ppl_cumul)}</td><td className="n">{num(sit.totaux.actifs)}</td></tr></tfoot>
+            </Table>
+            <p className="muted small">Cumuls = valeurs initiales validées de chaque ZS + événements des fiches soumises. Une correction validée d’une fiche passée se répercute d’elle-même. Les décès probables ou communautaires non confirmés ne sont jamais ajoutés au cumul des décès.</p>
+          </Section>
+          <Section title={`Nouveaux cas confirmés par jour, ${span === 0 ? `depuis le ${fmtDate(debut)}` : `${span} derniers jours`}`}>
+            <LineChart series={[{ name: 'Nouveaux confirmés', values: sitSeries.map((p) => ({ x: p.d, y: p.t.total })) }, { name: 'Nouveaux guéris', values: sitSeries.map((p) => ({ x: p.d, y: p.t.gueris })) }]} />
+          </Section>
+          <Section title="Cumuls">
+            <LineChart series={[{ name: 'Cumul confirmés', values: sitSeries.map((p) => ({ x: p.d, y: p.t.confirmes })) }, { name: 'Cumul décès', values: sitSeries.map((p) => ({ x: p.d, y: p.t.deces })) }, { name: 'En cours', values: sitSeries.map((p) => ({ x: p.d, y: p.t.actifs })) }]} />
+          </Section>
+        </>
+      )}
+
+      {tab === 'nouv' && (
+        <Section title={`Nouveautés du ${fmtDate(end)} (par rapport à la fiche précédente de chaque ZS)`}>
+          <p className="muted small">{Object.entries(ETATS).map(([k, e]) => `${e.label} : ${e.aide}`).join(' · ')}.</p>
+          <Table>
+            <thead><tr><th>ZS</th><th className="n">Nouvelles</th><th className="n">Inchangées</th><th className="n">Corrigées</th><th className="n">Non renseignées</th><th>Ce qui change</th></tr></thead>
+            <tbody>
+              {nouv.map((x) => (
+                <tr key={x.z.id}>
+                  <td><strong>{x.z.nom}</strong>{x.prec && <div className="muted small">vs {fmtDate(x.prec.date, true)}</div>}</td>
+                  {!x.r ? <td colSpan="5" className="muted">Pas de fiche soumise ce jour</td> : (
+                    <>
+                      <td className="n">{x.compte.nouveau}</td><td className="n">{x.compte.inchange}</td>
+                      <td className={`n ${x.compte.corrige ? 'tone-warn' : ''}`}>{x.compte.corrige}</td>
+                      <td className={`n ${x.compte.non_renseigne ? 'tone-bad' : ''}`}>{x.compte.non_renseigne}</td>
+                      <td>
+                        <ul className="nouveautes-liste">
+                          {x.items.filter((i) => i.group === 'epi' ? true : i.etat === 'corrige' || Number(i.valeur) !== 0 || (i.avant !== null && i.avant !== 0)).slice(0, 12).map((i) => (
+                            <li key={i.key}><span className={`etat etat-${i.etat}`}>{ETATS[i.etat].label}</span> {FIELD_BY_KEY[i.key].label} : <strong>{num(i.valeur)}</strong>{i.avant !== null && i.avant !== undefined && <span className="muted"> (avant {num(i.avant)})</span>}</li>
+                          ))}
+                          {x.r.nouvelles_as?.length > 0 && <li><span className="etat etat-nouveau">Nouveau</span> AS touchée(s) : <strong>{sit.rows.find((y) => y.zs.id === x.z.id)?.nouvelles_as.join(', ')}</strong></li>}
+                        </ul>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </Section>
+      )}
 
       {tab === 'province' && (
         <>

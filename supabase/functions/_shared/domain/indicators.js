@@ -85,7 +85,7 @@ export function indexReports(reports) {
 }
 const getR = (idx, date, zsId) => idx.get(`${date}|${zsId}`) || null;
 
-const SUM_KEYS = ['alertes_validees', 'inv_report_entrant', 'inv_realisees_jour', 'inv_realisees_report', 'inv_moins_24h',
+const SUM_KEYS = ['cas_conf_vivants', 'cas_conf_decedes', 'cas_conf_ppl', 'deces_parmi_confirmes', 'gueris', 'deces_non_confirmes', 'alertes_validees', 'inv_report_entrant', 'inv_realisees_jour', 'inv_realisees_report', 'inv_moins_24h',
   'narratifs_attendus', 'narratifs_disponibles', 'mappings_attendus', 'mappings_disponibles',
   'ct_report', 'ct_identifies', 'ct_listes_24h', 'ct_listes_tardifs', 'ct_vus', 'ct_nonvus_veille', 'ct_rattrapes',
   'ct_sortie_21j', 'ct_sortie_symptomatiques', 'ct_sortie_confirmes', 'ct_sortie_perdus', 'ct_sortie_deplaces',

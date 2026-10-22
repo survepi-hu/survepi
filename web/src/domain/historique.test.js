@@ -87,7 +87,7 @@ describe('historique', () => {
 
   it('une fiche historique compte dans la complétude, pas dans la promptitude', () => {
     const settings = { heure_limite: '16:30', seuil_suivi: 0.8, fuseau: 'Africa/Lubumbashi', jours_post_flambee: 42 };
-    const full = { alertes_validees: 1, inv_report_entrant: 0, inv_realisees_jour: 1, inv_realisees_report: 0, ct_report: 0, ct_identifies: 0, ct_listes_24h: 0,
+    const full = { cas_conf_vivants: 0, cas_conf_decedes: 0, cas_conf_ppl: 0, deces_parmi_confirmes: 0, gueris: 0, alertes_validees: 1, inv_report_entrant: 0, inv_realisees_jour: 1, inv_realisees_report: 0, ct_report: 0, ct_identifies: 0, ct_listes_24h: 0,
       ct_sortie_21j: 0, ct_sortie_symptomatiques: 0, ct_sortie_confirmes: 0, ct_sortie_perdus: 0, ct_sortie_deplaces: 0, ct_sortie_decedes: 0, ct_sortie_doublons: 0, ct_vus: 0, reco_actifs: 2 };
     const reports = [{ ...full, date: '2026-09-01', zs_id: 'isiro', statut: 'valide_prov', source: 'historique', submitted_at: null },
       { ...full, alertes_validees: 3, date: '2026-09-01', zs_id: 'wamba', statut: 'valide_prov', source: 'historique', submitted_at: null }];
@@ -103,5 +103,43 @@ describe('historique', () => {
     expect(p2.groups.all.completude).toBe(1);
     const p3 = provincial(zsList, '2026-09-01', indexReports([reports[0]]), settings, np);
     expect(p3.groups.all.completude).toBe(0.5);
+  });
+  it('AS : noms résolus dans la liste de la ZS, jamais recomptées', () => {
+    const areas = [{ id: 'a1', zs_id: 'isiro', nom: 'Kélé' }, { id: 'a2', zs_id: 'isiro', nom: 'Mendambo', touchee_le: '2026-08-30' }, { id: 'a3', zs_id: 'isiro', nom: 'Bassa' }, { id: 'a4', zs_id: 'isiro', nom: 'Rungu centre' }];
+    const reports = [{ date: '2026-10-15', zs_id: 'isiro', statut: 'soumis', source: 'saisie', nouvelles_as: ['a4'] }];
+    const modele = parseModele([
+      { Date: '2026-09-01', ZS: 'Isiro', 'Nouveaux cas confirmés vivants': 2, 'Nouveaux cas confirmés décédés': 0, 'Nouvelles AS touchées': 'kele, Mendambo, Rungu centre' },
+      { Date: '2026-09-02', ZS: 'Isiro', 'Nouveaux cas confirmés vivants': 1, 'Nouvelles AS touchées': 'Kele; Bassa' },
+      { Date: '2026-09-03', ZS: 'Isiro', 'Nouveaux cas confirmés vivants': 1, 'Nouvelles AS touchées': 'Inconnue' },
+    ], zsList);
+    expect(modele[0].asNoms).toEqual(['kele', 'Mendambo', 'Rungu centre']);
+    const plan = buildPlan({ modele }, { reports, zsList, today, areas });
+    const [j1, j2, j3] = plan.rows;
+    expect(j1.record.nouvelles_as).toEqual(['a1']);
+    expect(j1.warnings.join()).toMatch(/Mendambo déjà touchée/);
+    expect(j1.warnings.join()).toMatch(/Rungu centre déjà touchée/); // déclarée dans une saisie, même plus tard
+    expect(j2.record.nouvelles_as).toEqual(['a3']);
+    expect(j3.action).toBe('erreur');
+    expect(recordsToImport(plan).every((r) => Array.isArray(r.nouvelles_as))).toBe(true);
+  });
+
+  it('DPS : cas confirmés à la date du résultat, décès à part, 1re AS touchée', () => {
+    const areas = [{ id: 'k', zs_id: 'isiro', nom: 'Kele' }];
+    const inv = [
+      { 'Zone de santé': 'Isiro', 'Aire de santé': 'Kele', 'Date notification DPS': '2026-09-01', 'Type événement': 'Cas suspect', 'Classification finale': 'Confirmé', 'Date résultat': '2026-09-03' },
+      { 'Zone de santé': 'Isiro', 'Aire de santé': 'Kele', 'Date notification DPS': '2026-09-02', 'Type événement': 'Décès', 'Classification finale': 'Confirmé', 'Date résultat': '2026-09-04' },
+      { 'Zone de santé': 'Isiro', 'Aire de santé': 'Nala', 'Date notification DPS': '2026-09-02', 'Type événement': 'Alerte', 'Classification finale': 'Écarté' },
+      { 'Zone de santé': 'Wamba', 'Date notification DPS': '2026-09-02', 'Type événement': 'Alerte' },
+    ];
+    const d = deriveFromDps({ inv }, zsList, today);
+    const f = (z, date) => d.fiches.find((x) => x.zs_id === z && x.date === date);
+    expect(f('isiro', '2026-09-03').values).toMatchObject({ cas_conf_vivants: 1, cas_conf_decedes: 0 });
+    expect(f('isiro', '2026-09-04').values).toMatchObject({ cas_conf_vivants: 0, cas_conf_decedes: 1 });
+    expect(f('isiro', '2026-09-01').values.cas_conf_vivants).toBe(0);
+    expect(f('isiro', '2026-09-03').asNoms).toEqual(['Kele']);
+    expect(f('isiro', '2026-09-04').asNoms).toEqual([]);
+    expect(f('wamba', '2026-09-02').values.cas_conf_vivants).toBeUndefined(); // pas de classification : inconnu, pas 0
+    const plan = buildPlan({ dps: d.fiches }, { reports: [], zsList, today, areas });
+    expect(plan.rows.find((r) => r.date === '2026-09-03' && r.zs_id === 'isiro').record.nouvelles_as).toEqual(['k']);
   });
 });

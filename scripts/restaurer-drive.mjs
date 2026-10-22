@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import zlib from 'node:zlib';
 import pg from 'pg';
 
-const ORDRE = ['settings', 'actors', 'health_zones', 'assignments', 'daily_reports', 'report_attachments', 'report_versions', 'validations',
+const ORDRE = ['settings', 'actors', 'health_zones', 'health_areas', 'assignments', 'daily_reports', 'report_attachments', 'report_versions', 'validations',
   'investigations', 'contacts', 'contact_followups', 'deferrals', 'notifications', 'audit_logs'];
 const [file] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const recreer = process.argv.includes('--recreer-comptes');

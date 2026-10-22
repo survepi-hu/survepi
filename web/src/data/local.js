@@ -4,7 +4,7 @@ import { appareil } from '../appareil.js';
 // pour que la démo se comporte comme la version Supabase.
 import { buildDemo } from './demoSeed.js';
 
-const KEY = 'survepi-demo-v2';
+const KEY = 'survepi-demo-v4';
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 const TABLES = ['zs', 'actors', 'assignments', 'reports', 'notifications', 'investigations', 'contacts', 'followups', 'deferrals', 'audit', 'versions', 'validations'];
 const LOCKED = ['valide_zs', 'valide_prov'];
@@ -117,10 +117,15 @@ export function createLocalAdapter() {
 
     async insert(table, row) {
       const r = { id: row.id || uid(), created_at: new Date().toISOString(), ...row };
-      db[table].push(r);
+      (db[table] ||= []).push(r);
       audit(table, r.id, 'INSERT', null, r);
       persist();
       return r;
+    },
+    async remove(table, id) {
+      const old = (db[table] || []).find((x) => x.id === id);
+      db[table] = (db[table] || []).filter((x) => x.id !== id);
+      audit(table, id, 'DELETE', old, null); persist();
     },
     async update(table, id, patch) {
       const i = db[table].findIndex((x) => x.id === id);
@@ -192,7 +197,7 @@ export function createLocalAdapter() {
       persist();
     },
     async exportAll() {
-      return { settings: Object.entries(db.settings).map(([key, value]) => ({ key, value })), health_zones: db.zs, actors: db.actors, assignments: db.assignments,
+      return { settings: Object.entries(db.settings).map(([key, value]) => ({ key, value })), health_zones: db.zs, health_areas: db.areas || [], actors: db.actors, assignments: db.assignments,
         daily_reports: db.reports, validations: db.validations, report_versions: db.versions, investigations: db.investigations, contacts: db.contacts,
         contact_followups: db.followups, deferrals: db.deferrals, notifications: db.notifications, audit_logs: db.audit };
     },

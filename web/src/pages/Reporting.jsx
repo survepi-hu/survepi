@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
 import { FIELD_BY_KEY, MOTIFS_INVESTIGATION, MOTIFS_SUIVI, SORTIES, applyZeroReport, can, canValidate, carryOver, completeness, compute, emptyReport, isLocked, statusOnSubmit, validate } from '../domain/report.js';
 import { cellState, zsCategory, isExpected } from '../domain/indicators.js';
+import { ETATS, detection, rapportPrecedent, cumulsZs, joursSansNouveauCas, asTouchees, asProposables, avertissementsEpi } from '../domain/epi.js';
 import { addDays, dateRange, fmtDate, fmtTime } from '../domain/time.js';
 import { Pill, Section, pct, num, Empty, Dot } from '../ui.jsx';
 import { CELL_TONE, CatPill, StatutPill, actorName } from './common.jsx';
@@ -40,15 +41,23 @@ function Matrix({ zsList, end, onPick, sel }) {
   );
 }
 
-function NumInput({ k, form, set, errors, readOnly, prevHint }) {
+function Etat({ d }) {
+  if (!d) return null;
+  const e = ETATS[d.etat];
+  const titre = `${e.aide}${d.avant !== null && d.avant !== undefined ? ` (rapport précédent : ${d.avant})` : ''}${d.etat === 'corrige' && d.valide !== null ? ` (valeur validée : ${d.valide})` : ''}`;
+  return <span className={`etat etat-${d.etat}`} title={titre}>{e.label}</span>;
+}
+
+function NumInput({ k, form, set, errors, readOnly, prevHint, det }) {
   const f = FIELD_BY_KEY[k];
   const err = errors.find((e) => e.field === k);
   return (
     <label className={`field num-field ${err ? 'has-error' : ''}`}>
-      <span className="field-label">{f.short && <b className="short">{f.short}</b>}{f.label}{f.required && <i className="req" title="Obligatoire">*</i>}</span>
+      <span className="field-label">{f.short && <b className="short">{f.short}</b>}{f.label}{f.required && <i className="req" title="Obligatoire">*</i>}<Etat d={det?.etats?.[k]} /></span>
       <input id={`f-${k}`} type="number" inputMode="numeric" min="0" step="1" value={form[k] ?? ''} readOnly={readOnly}
         onChange={(e) => set({ [k]: e.target.value === '' ? null : Math.max(0, Math.trunc(Number(e.target.value))) })} />
       {prevHint !== undefined && <span className="field-hint">veille : {num(prevHint)}</span>}
+      {f.help && f.group === 'epi' && <span className="field-hint">{f.help}</span>}
       {err && <span className="field-error">{err.msg}</span>}
     </label>
   );
@@ -100,6 +109,10 @@ export default function Reporting() {
   const opts = { prev, seuilSuivi: s.settings.seuil_suivi };
   const v = useMemo(() => (form ? validate(form, opts) : { errors: [], warnings: [] }), [form, prev]); // eslint-disable-line react-hooks/exhaustive-deps
   const c = useMemo(() => (form ? compute(form) : null), [form]);
+  const precedent = useMemo(() => (zs ? rapportPrecedent(zs.id, date, s.data.reports) : null), [zs?.id, date, s.data.reports]); // eslint-disable-line react-hooks/exhaustive-deps
+  const det = useMemo(() => (form ? detection(form, precedent, existing ? s.data.versions.filter((x) => x.report_id === existing.id) : []) : null), [form, precedent, existing, s.data.versions]);
+  // Fiche en cours comptée comme retenue, pour montrer les cumuls « si cette fiche est validée »
+  const avecFiche = useMemo(() => (form ? [...s.data.reports.filter((r) => !(r.zs_id === form.zs_id && r.date === form.date)), { ...form, id: existing?.id || 'en-cours', statut: 'soumis', submitted_at: form.submitted_at || 'en-cours' }] : []), [form, s.data.reports, existing?.id]);
   if (!zs) return <Empty>Aucune zone de santé dans votre périmètre.</Empty>;
   if (!form) return null;
 
@@ -122,6 +135,14 @@ export default function Reporting() {
     await s.actions.saveReport({ ...form, statut: st.statut }, st.statut === 'soumis' ? 'Fiche soumise, complète' : 'Fiche soumise mais incomplète');
   };
   const zero = () => setForm(applyZeroReport(form, prev));
+  const zsRef = s.data.zs.find((x) => x.id === zs.id) || zs;
+  const cu = cumulsZs(zsRef, date, avecFiche);
+  const jsc = joursSansNouveauCas(zsRef, date, avecFiche);
+  const asZs = s.data.areas.filter((a) => a.zs_id === zs.id && a.actif !== false);
+  const touchees = asTouchees(zs.id, date, s.data.areas, avecFiche);
+  const proposables = asProposables(zs.id, date, s.data.areas, s.data.reports, existing?.id);
+  const asOptions = [...new Map([...proposables, ...(form.nouvelles_as || []).map((id) => s.data.areas.find((a) => a.id === id)).filter(Boolean)].map((a) => [a.id, a])).values()].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  const avertEpi = avertissementsEpi(form, zsRef, s.data.reports);
   const transition = async (action, to) => {
     if (action === 'retourner' && !returnMsg.trim()) { s.notify('Indiquer ce qu’il faut corriger.', 'bad'); return; }
     await s.actions.saveReport({ ...existing, statut: to, commentaire_validation: returnMsg || null }, { valider_zs: 'Fiche validée (ZS)', valider_prov: 'Fiche validée (province)', retourner: 'Fiche retournée au rapporteur', rouvrir: 'Fiche rouverte : modification tracée' }[action]);
@@ -161,15 +182,55 @@ export default function Reporting() {
       {existing?.statut === 'a_corriger' && <p className="note tone-bad">Retour superviseur : {existing.commentaire_validation || vals.find((x) => x.to_statut === 'a_corriger')?.commentaire || 'voir commentaire'}</p>}
       {ro && <p className="note">{isLocked(existing) ? 'Fiche validée : lecture seule. Une réouverture supervisée est nécessaire pour la corriger.' : 'Lecture seule pour votre profil.'}</p>}
 
+      {det && (
+        <p className="detection-resume">
+          <strong>Détection</strong>{precedent ? ` (comparé au rapport du ${fmtDate(precedent.date, true)})` : ' (pas de rapport précédent)'} :
+          {' '}<span className="etat etat-nouveau">{det.compte.nouveau} nouvelle(s)</span>
+          <span className="etat etat-inchange">{det.compte.inchange} inchangée(s)</span>
+          {det.compte.corrige > 0 && <span className="etat etat-corrige">{det.compte.corrige} corrigée(s)</span>}
+          <span className="etat etat-non_renseigne">{det.compte.non_renseigne} non renseignée(s)</span>
+          <small className="muted">Zéro compte comme une donnée rapportée.</small>
+        </p>
+      )}
+
       <form className="fiche" onSubmit={(e) => e.preventDefault()}>
+        <h2 className="rubrique">I. Situation épidémiologique</h2>
+        <fieldset className="blk">
+          <legend>Événements du jour</legend>
+          <div className="grid-fields">
+            {['cas_conf_vivants', 'cas_conf_decedes', 'cas_conf_ppl', 'deces_parmi_confirmes', 'gueris', 'deces_non_confirmes'].map((k) => <NumInput key={k} k={k} det={det} {...{ form, set, errors: showErr, readOnly: ro }} />)}
+          </div>
+          <div className="sub-block">
+            <span className="field-label">Nouvelles aires de santé touchées <small className="muted">(1er cas confirmé dans l’AS)</small></span>
+            {asZs.length === 0 ? <p className="muted small">Aucune aire de santé enregistrée pour cette ZS : liste à compléter dans « ZS & acteurs », onglet Aires de santé.</p>
+              : asOptions.length === 0 ? <p className="muted small">Toutes les aires de santé de la ZS sont déjà touchées.</p>
+                : <Checks id="nouvelles_as" options={asOptions.map((a) => [a.id, a.nom])} value={form.nouvelles_as || []} readOnly={ro} onChange={(x) => set({ nouvelles_as: x })} />}
+          </div>
+          <div className="calcs">
+            <Calc label="Nouveaux confirmés du jour" value={num(c.cas_conf_total)} tone={c.cas_conf_total ? 'bad' : null} />
+            <Calc label="Nouvelles AS touchées" value={num((form.nouvelles_as || []).length)} />
+            <Calc label="AS touchées (cumul)" value={`${num(touchees.size)}${asZs.length ? ` / ${asZs.length}` : ''}`} />
+            <Calc label="Jours sans nouveau cas confirmé" value={jsc === null ? 'NA' : num(jsc)} tone={jsc === 0 ? 'bad' : null} />
+            <Calc label="Cumul cas confirmés" value={num(cu.confirmes)} />
+            <Calc label="Cumul décès (confirmés)" value={num(cu.deces)} />
+            <Calc label="Létalité" value={pct(cu.letalite, 1)} />
+            <Calc label="Cumul guéris" value={num(cu.gueris)} />
+            <Calc label="Cumul PPL confirmés" value={num(cu.ppl)} />
+            <Calc label="Cas confirmés en cours" value={num(cu.actifs)} />
+          </div>
+          <p className="muted small">Cumuls recalculés = valeurs initiales de la ZS{zsRef.base_date ? ` au ${fmtDate(zsRef.base_date)}` : ''} + événements des fiches soumises, y compris celle-ci. Jamais recopiés d’un jour à l’autre.</p>
+          {avertEpi.map((w) => <p key={w.msg} className="note tone-warn">{w.msg}</p>)}
+        </fieldset>
+
+        <h2 className="rubrique">II. Investigations</h2>
         <fieldset className="blk">
           <legend>Investigations</legend>
           <div className="grid-fields">
-            <NumInput k="alertes_validees" {...{ form, set, errors: showErr, readOnly: ro }} />
-            <NumInput k="inv_report_entrant" {...{ form, set, errors: showErr, readOnly: ro }} prevHint={prev ? carry.inv_report_entrant : undefined} />
-            <NumInput k="inv_realisees_jour" {...{ form, set, errors: showErr, readOnly: ro }} />
-            <NumInput k="inv_realisees_report" {...{ form, set, errors: showErr, readOnly: ro }} />
-            <NumInput k="inv_moins_24h" {...{ form, set, errors: showErr, readOnly: ro }} />
+            <NumInput det={det} k="alertes_validees" {...{ form, set, errors: showErr, readOnly: ro }} />
+            <NumInput det={det} k="inv_report_entrant" {...{ form, set, errors: showErr, readOnly: ro }} prevHint={prev ? carry.inv_report_entrant : undefined} />
+            <NumInput det={det} k="inv_realisees_jour" {...{ form, set, errors: showErr, readOnly: ro }} />
+            <NumInput det={det} k="inv_realisees_report" {...{ form, set, errors: showErr, readOnly: ro }} />
+            <NumInput det={det} k="inv_moins_24h" {...{ form, set, errors: showErr, readOnly: ro }} />
           </div>
           <div className="calcs">
             <Calc label="Non faites (A − Ij)" value={num(c.inv_non_faites)} tone={c.inv_non_faites ? 'warn' : null} />
@@ -194,17 +255,18 @@ export default function Reporting() {
         <fieldset className="blk">
           <legend>Documentation</legend>
           <div className="grid-fields">
-            {['narratifs_attendus', 'narratifs_disponibles', 'mappings_attendus', 'mappings_disponibles'].map((k) => <NumInput key={k} k={k} {...{ form, set, errors: showErr, readOnly: ro }} />)}
+            {['narratifs_attendus', 'narratifs_disponibles', 'mappings_attendus', 'mappings_disponibles'].map((k) => <NumInput det={det} key={k} k={k} {...{ form, set, errors: showErr, readOnly: ro }} />)}
           </div>
         </fieldset>
 
+        <h2 className="rubrique">III. Suivi des contacts</h2>
         <fieldset className="blk">
           <legend>Contacts : listage</legend>
           <div className="grid-fields">
-            <NumInput k="ct_report" {...{ form, set, errors: showErr, readOnly: ro }} prevHint={prev ? carry.ct_report : undefined} />
-            <NumInput k="ct_identifies" {...{ form, set, errors: showErr, readOnly: ro }} />
-            <NumInput k="ct_listes_24h" {...{ form, set, errors: showErr, readOnly: ro }} />
-            <NumInput k="ct_listes_tardifs" {...{ form, set, errors: showErr, readOnly: ro }} />
+            <NumInput det={det} k="ct_report" {...{ form, set, errors: showErr, readOnly: ro }} prevHint={prev ? carry.ct_report : undefined} />
+            <NumInput det={det} k="ct_identifies" {...{ form, set, errors: showErr, readOnly: ro }} />
+            <NumInput det={det} k="ct_listes_24h" {...{ form, set, errors: showErr, readOnly: ro }} />
+            <NumInput det={det} k="ct_listes_tardifs" {...{ form, set, errors: showErr, readOnly: ro }} />
           </div>
           <div className="calcs">
             <Calc label="Taux de listage ≤ 24 h" value={pct(c.taux_listage)} />
@@ -219,7 +281,7 @@ export default function Reporting() {
         <fieldset className="blk">
           <legend>Sorties de suivi</legend>
           <div className="grid-fields">
-            {SORTIES.map(([k]) => <NumInput key={k} k={k} {...{ form, set, errors: showErr, readOnly: ro }} />)}
+            {SORTIES.map(([k]) => <NumInput det={det} key={k} k={k} {...{ form, set, errors: showErr, readOnly: ro }} />)}
           </div>
           <div className="calcs">
             <Calc label="Total sorties" value={num(c.ct_sorties)} />
@@ -230,11 +292,11 @@ export default function Reporting() {
         <fieldset className="blk">
           <legend>Suivi du jour</legend>
           <div className="grid-fields">
-            <NumInput k="ct_vus" {...{ form, set, errors: showErr, readOnly: ro }} />
-            <NumInput k="ct_nonvus_veille" {...{ form, set, errors: showErr, readOnly: ro }} prevHint={prev ? carry.ct_nonvus_veille : undefined} />
-            <NumInput k="ct_rattrapes" {...{ form, set, errors: showErr, readOnly: ro }} />
-            <NumInput k="reco_actifs" {...{ form, set, errors: showErr, readOnly: ro }} />
-            <NumInput k="superviseurs_reco" {...{ form, set, errors: showErr, readOnly: ro }} />
+            <NumInput det={det} k="ct_vus" {...{ form, set, errors: showErr, readOnly: ro }} />
+            <NumInput det={det} k="ct_nonvus_veille" {...{ form, set, errors: showErr, readOnly: ro }} prevHint={prev ? carry.ct_nonvus_veille : undefined} />
+            <NumInput det={det} k="ct_rattrapes" {...{ form, set, errors: showErr, readOnly: ro }} />
+            <NumInput det={det} k="reco_actifs" {...{ form, set, errors: showErr, readOnly: ro }} />
+            <NumInput det={det} k="superviseurs_reco" {...{ form, set, errors: showErr, readOnly: ro }} />
           </div>
           <div className="calcs">
             <Calc label="Non vus" value={num(c.ct_non_vus)} tone={c.ct_non_vus ? 'warn' : null} />

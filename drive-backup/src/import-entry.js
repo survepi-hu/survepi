@@ -13,7 +13,7 @@ function objets(arrays) {
  * classeurs : [{ nom, onglets: { <nom d'onglet>: tableaux } }]
  * Rend le plan d'import (mêmes contrôles que l'app) et les fiches à envoyer.
  */
-export function planifier(classeurs, { zsList, reports, today }) {
+export function planifier(classeurs, { zsList, reports, today, areas = [] }) {
   const norm = (s) => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
   const modele = [], inv = [], contacts = [], suivi = [], lus = [];
   for (const c of classeurs) {
@@ -28,6 +28,6 @@ export function planifier(classeurs, { zsList, reports, today }) {
     lus.push({ nom: c.nom, types });
   }
   const d = inv.length + contacts.length + suivi.length ? deriveFromDps({ inv, contacts, suivi }, zsList, today) : { fiches: [], notes: null };
-  const plan = buildPlan({ modele, dps: d.fiches }, { reports, zsList, today });
+  const plan = buildPlan({ modele, dps: d.fiches }, { reports, zsList, today, areas });
   return { plan, notes: d.notes, lus, fiches: recordsToImport(plan) };
 }

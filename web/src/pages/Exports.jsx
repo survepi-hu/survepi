@@ -7,6 +7,7 @@ import { anciennete } from '../domain/registry.js';
 import { exportXlsx, exportCsv, copyTable } from '../export.js';
 import { Section, Field } from '../ui.jsx';
 import { actorName, zsName } from './common.jsx';
+import { situationProvince } from '../domain/epi.js';
 
 const P = (v) => (v === null || v === undefined ? 'NA' : Math.round(v * 1000) / 10);
 
@@ -35,6 +36,25 @@ export default function Exports() {
     }));
     return { kpi, zs };
   };
+  const areas = s.data.areas || [];
+  const nomsAs = (ids) => (ids || []).map((id) => areas.find((a) => a.id === id)?.nom || '?').join(', ');
+  const epi = (d = s.date) => {
+    const p = situationProvince(s.visibleZs, d, s.data.reports, areas);
+    const ligne = (nom, j, x) => ({ ZS: nom, 'Nouvelles AS touchées': x.nas, 'AS touchées (cumul)': x.ast, 'Jours sans nouveau cas confirmé': x.jsc ?? 'NA',
+      'Nouveaux confirmés vivants': j.vivants ?? '', 'Nouveaux confirmés décédés': j.decedes ?? '', 'Nouveaux confirmés (total)': j.total ?? '', 'dont PPL': j.ppl ?? '',
+      'Nouveaux décès parmi confirmés': j.deces_parmi ?? '', 'Nouveaux guéris': j.gueris ?? '', 'Cumul confirmés': x.c, 'Cumul décès (confirmés)': x.dc,
+      'Létalité (%)': P(x.let), 'Cumul guéris': x.g, 'Cumul PPL confirmés': x.ppl, 'Cas confirmés en cours': x.act, 'Décès probables / communautaires (cumul, à part)': x.dnc });
+    const rows = p.rows.map((r) => ligne(r.zs.nom, r.jour || {}, { nas: r.nouvelles_as.join(', '), ast: r.as_total ? `${r.as_touchees}/${r.as_total}` : r.as_touchees, jsc: r.jours_sans_cas,
+      c: r.cumuls.confirmes, dc: r.cumuls.deces, let: r.cumuls.letalite, g: r.cumuls.gueris, ppl: r.cumuls.ppl, act: r.cumuls.actifs, dnc: r.cumuls.deces_non_confirmes }));
+    const t = p.totaux;
+    rows.push(ligne('Province', t, { nas: t.nouvelles_as.join(', '), ast: t.as_touchees, jsc: t.jours_sans_cas, c: t.confirmes, dc: t.deces, let: t.letalite, g: t.gueris_cumul, ppl: t.ppl_cumul, act: t.actifs, dnc: t.deces_nc_cumul }));
+    return rows;
+  };
+  const epiSerie = () => dateRange(from, to).map((d) => {
+    const t = situationProvince(s.visibleZs, d, s.data.reports, areas).totaux;
+    return { Date: d, SE: epiWeek(d).label, 'Nouveaux confirmés': t.total, Vivants: t.vivants, Décédés: t.decedes, PPL: t.ppl, 'Décès parmi confirmés': t.deces_parmi, Guéris: t.gueris,
+      'Nouvelles AS': t.nouvelles_as.join(', '), 'Cumul confirmés': t.confirmes, 'Cumul décès': t.deces, 'Cumul guéris': t.gueris_cumul, 'Cumul PPL': t.ppl_cumul, 'En cours': t.actifs, 'Jours sans cas': t.jours_sans_cas ?? 'NA' };
+  });
   const reportsList = () => s.data.deferrals.filter((d) => !d.apure && zsIds.includes(d.zs_id)).map((d) => ({
     Type: d.objet, Code: d.code, ZS: zsName(s, d.zs_id), 'Date initiale': d.date_initiale, 'Ancienneté (j)': anciennete(d, s.np.date), 'N° report': d.numero,
     Motif: d.motif, 'Nouvelle échéance': d.nouvelle_echeance.slice(0, 10), Responsable: actorName(s, d.responsable_id),
@@ -45,6 +65,7 @@ export default function Exports() {
       Soumission: r.submitted_at ? fmtTime(r.submitted_at) : '', Ponctualité: isSubmitted(r) ? timeliness(r, z, r.date, s.settings, s.np) : 'non reçu',
       'Complétude (%)': P(completeness(r)) };
     for (const f of FIELDS) o[f.label] = r[f.key];
+    o['Nouvelles AS touchées'] = nomsAs(r.nouvelles_as);
     Object.assign(o, { 'Inv. non faites': c.inv_non_faites, 'Report sortant': c.inv_report_sortant, 'Taux inv. (%)': P(c.taux_inv), 'Contacts à suivre': c.ct_a_suivre,
       'Non vus': c.ct_non_vus, 'Taux suivi (%)': P(c.taux_suivi), 'Taux listage (%)': P(c.taux_listage), 'Motifs inv.': (r.motifs_inv || []).join(', '),
       'Motifs non-suivi': (r.motifs_suivi || []).join(', '), Commentaire: r.commentaire || '' });
@@ -72,9 +93,11 @@ export default function Exports() {
   const d = s.date;
 
   const products = [
-    { k: 'situation', t: 'Situation journalière', desc: `KPI provincial, tableau par ZS et reports en souffrance du ${d}.`,
-      xlsx: () => { const x = situation(); return exportXlsx(`SurvEpi_situation_${d}.xlsx`, [{ name: 'KPI', rows: x.kpi }, { name: 'ZS', rows: x.zs }, { name: 'Reports', rows: reportsList() }]); },
+    { k: 'situation', t: 'Situation journalière', desc: `Matrice en 3 rubriques du ${d} : situation épidémiologique, investigations et suivi des contacts par ZS, reports en souffrance.`,
+      xlsx: () => { const x = situation(); return exportXlsx(`SurvEpi_situation_${d}.xlsx`, [{ name: 'Situation épidémio', rows: epi() }, { name: 'KPI', rows: x.kpi }, { name: 'ZS', rows: x.zs }, { name: 'Reports', rows: reportsList() }]); },
       copy: () => copy(situation().zs, 'Tableau ZS'), copy2: () => copy(situation().kpi, 'KPI') },
+    { k: 'epi', t: 'Situation épidémiologique (évolution)', desc: 'Nouveaux cas, décès, guéris, AS touchées et cumuls provinciaux, jour par jour.', period: true,
+      xlsx: () => exportXlsx(`SurvEpi_situation_epi_${from}_${to}.xlsx`, [{ name: 'Par jour', rows: epiSerie() }, { name: `ZS au ${to}`, rows: epi(to) }]), copy: () => copy(epi(), 'Situation épidémio') },
     { k: 'se', t: 'Rapport semaine épidémiologique', desc: 'Tendances hebdomadaires : investigations, listage, suivi, réception.',
       xlsx: () => exportXlsx(`SurvEpi_SE_${epiWeek(d).label}.xlsx`, [{ name: 'Semaines', rows: se() }]), copy: () => copy(se(), 'Synthèse SE') },
     { k: 'reports', t: 'Liste des reports', desc: 'Investigations et contacts non apurés, en temps réel.',

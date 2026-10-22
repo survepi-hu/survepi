@@ -5,6 +5,7 @@ import { useDay, useGaps, CELL_TONE, CatPill, zsName, backupState } from './comm
 import { DEFAULT_STEPS } from '../domain/reminders.js';
 import { hhmmToMin, fmtTime, fmtDate } from '../domain/time.js';
 import { needsSupervisor } from '../domain/registry.js';
+import { situationProvince } from '../domain/epi.js';
 
 export default function Accueil({ go }) {
   const s = useStore();
@@ -20,6 +21,7 @@ export default function Accueil({ go }) {
   const openDef = s.data.deferrals.filter((d) => !d.apure && s.visibleZs.some((z) => z.id === d.zs_id));
   const sup = [...s.data.investigations, ...s.data.contacts].filter((o) => needsSupervisor(o, s.settings.seuil_escalade_reports) && s.visibleZs.some((z) => z.id === o.zs_id));
   const waQueue = s.data.notifications.filter((n) => n.mode === 'manuel' && n.statut === 'a_envoyer').length;
+  const epi = useMemo(() => situationProvince(s.visibleZs, s.date, s.data.reports, s.data.areas || []).totaux, [s.visibleZs, s.date, s.data.reports, s.data.areas]);
   const mine = useMemo(() => day.rows.filter((r) => s.myZs.includes(r.zs.id)), [day, s.myZs]);
 
   return (
@@ -45,6 +47,14 @@ export default function Accueil({ go }) {
           </div>
         </Section>
       )}
+
+      <Band items={[
+        { label: 'Nouveaux cas confirmés', value: num(epi.total), sub: `${num(epi.vivants)} vivants · ${num(epi.decedes)} décédés · ${num(epi.ppl)} PPL`, tone: epi.total ? 'bad' : null },
+        { label: 'Nouvelles AS touchées', value: num(epi.nouvelles_as.length), sub: epi.nouvelles_as.join(', ') || `${num(epi.as_touchees)} au total`, tone: epi.nouvelles_as.length ? 'warn' : null },
+        { label: 'Jours sans nouveau cas', value: epi.jours_sans_cas === null ? '–' : num(epi.jours_sans_cas), sub: 'toutes ZS' },
+        { label: 'Cumul confirmés', value: num(epi.confirmes), sub: `${num(epi.deces)} décès · ${num(epi.gueris_cumul)} guéris` },
+        { label: 'Cas en cours', value: num(epi.actifs), sub: `létalité ${epi.letalite === null ? 'NA' : pct(epi.letalite, 1)}` },
+      ]} />
 
       <Band items={[
         { label: 'Rapports reçus', value: `${g.all.recues} / ${g.all.attendues}`, sub: `touchées ${g.touchee.recues}/${g.touchee.attendues} · prépa ${g.preparation.recues}/${g.preparation.attendues}` },

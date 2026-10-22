@@ -24,7 +24,7 @@
  */
 
 var TABLES = [
-  ['settings', 'key'], ['health_zones', 'id'], ['actors', 'id'], ['assignments', 'actor_id,zs_id'],
+  ['settings', 'key'], ['health_zones', 'id'], ['health_areas', 'id'], ['actors', 'id'], ['assignments', 'actor_id,zs_id'],
   ['daily_reports', 'id'], ['report_attachments', 'id'], ['validations', 'id'], ['report_versions', 'id'],
   ['investigations', 'id'], ['contacts', 'id'], ['contact_followups', 'id'], ['deferrals', 'id'],
   ['notifications', 'id'], ['audit_logs', 'id'],

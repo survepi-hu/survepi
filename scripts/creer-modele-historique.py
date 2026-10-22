@@ -13,10 +13,11 @@ ZS = sys.argv[2].split(',') if len(sys.argv) > 2 else ['Isiro', 'Wamba', 'Pawa',
 js = "import('./src/domain/historique.js').then(m=>{const r=m.HIST_HEADERS;import('./src/domain/report.js').then(p=>console.log(JSON.stringify({h:r,req:p.FIELDS.filter(f=>f.required).map(f=>f.key),help:Object.fromEntries(p.FIELDS.filter(f=>f.help).map(f=>[f.key,f.help]))})))})"
 data = json.loads(subprocess.check_output(['node', '--input-type=module', '-e', js], cwd=os.path.join(root, 'web')))
 H, REQ, HELP = data['h'], set(data['req']), data['help']
+HELP['nouvelles_as'] = 'Noms des aires de santé qui ont eu leur 1er cas confirmé ce jour-là, séparés par des virgules. Les noms doivent figurer dans la liste de la ZS (ZS & acteurs > Aires de santé). Une AS déjà touchée n’est jamais recomptée.'
 N = 3000
 DEEP, BLUE = '004E80', '0086C4'
 thin = Side(style='thin', color='CFDFEC'); grid = Border(left=thin, right=thin, top=thin, bottom=thin)
-GROUPES = {'alertes_validees': 'D9EEF8', 'ct_report': 'E8F4EA', 'ct_sortie_21j': 'FDF1DC', 'ct_vus': 'EFE8F6', 'reco_actifs': 'F3F3F3'}
+GROUPES = {'cas_conf_vivants': 'FBE7E5', 'nouvelles_as': 'FBE7E5', 'alertes_validees': 'D9EEF8', 'ct_report': 'E8F4EA', 'ct_sortie_21j': 'FDF1DC', 'ct_vus': 'EFE8F6', 'reco_actifs': 'F3F3F3'}
 
 wb = Workbook()
 lire = wb.active; lire.title = 'À lire'
@@ -27,6 +28,8 @@ texte = [
     ('Indiquer la source de chaque ligne dans la dernière colonne (ex. « SitRep n°12 », « Rapport ZS Wamba »).', None), ('', None),
     ('Ce qu’il faut savoir', 'h'),
     ('Une case vide = chiffre inconnu (pas zéro). Mettre 0 seulement quand c’est vraiment 0.', None),
+    ('I. Situation épidémiologique : seulement les événements du jour (nouveaux confirmés vivants / décédés, dont PPL, décès parmi les confirmés déjà connus, guéris). Ne jamais recopier un cumul : l’app recalcule les cumuls à partir des événements et des valeurs initiales de la ZS.', None),
+    ('Les décès probables ou communautaires non confirmés vont dans leur colonne à part : ils ne s’ajoutent jamais au cumul des décès.', None),
     ('Les reports (investigations en attente, contacts à suivre, non-vus de la veille) se calculent tout seuls à partir du jour précédent : on peut laisser ces colonnes vides.', None),
     ('Les lignes incohérentes (ex. plus d’investigations faites que d’alertes) sont signalées à l’import et ne sont pas enregistrées : les corriger puis recharger le fichier.', None),
     ('Une fiche déjà saisie dans l’app n’est jamais écrasée. Recharger le fichier corrigé remplace l’historique déjà importé pour les mêmes dates.', None),
@@ -53,7 +56,7 @@ for j, (k, label) in enumerate(H, 1):
     c.alignment = Alignment(wrap_text=True, vertical='center', horizontal='center'); c.border = grid
     if k in HELP: c.comment = Comment(HELP[k], 'SurvEpi')
     ws.column_dimensions[c.column_letter].width = 13 if j > 2 else (12 if k == 'date' else 18)
-    if k in ('commentaire', 'source_detail'): ws.column_dimensions[c.column_letter].width = 28
+    if k in ('commentaire', 'source_detail', 'nouvelles_as'): ws.column_dimensions[c.column_letter].width = 28
     if fill and k not in ('date', 'zs', 'commentaire', 'source_detail'):
         for r in range(2, 202): ws.cell(row=r, column=j).fill = PatternFill('solid', fgColor=fill)
 ws.row_dimensions[1].height = 78
@@ -67,5 +70,5 @@ ws.add_data_validation(dv); dv.add(f'B2:B{N + 1}')
 dd = DataValidation(type='date', operator='greaterThan', formula1='DATE(2020,1,1)', allow_blank=True, showErrorMessage=True, errorTitle='Date', error='Date au format JJ/MM/AAAA')
 ws.add_data_validation(dd); dd.add(f'A2:A{N + 1}')
 nb = DataValidation(type='whole', operator='greaterThanOrEqual', formula1='0', allow_blank=True, showErrorMessage=True, errorTitle='Nombre', error='Nombre entier positif ou case vide')
-ws.add_data_validation(nb); nb.add(f'C2:{ws.cell(row=1, column=len(H) - 2).column_letter}{N + 1}')
+ws.add_data_validation(nb); nb.add(f'C2:{ws.cell(row=1, column=len(H) - 3).column_letter}{N + 1}')
 wb.save(out); print('écrit', out)

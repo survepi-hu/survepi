@@ -33,7 +33,18 @@ export const SORTIES = [
 
 /** Champs numériques saisis. required = compte dans la complétude. */
 export const FIELDS = [
-  // Investigations
+  // I. Situation épidémiologique : événements du jour seulement (les cumuls sont calculés, jamais saisis)
+  { key: 'cas_conf_vivants', label: 'Nouveaux cas confirmés vivants', group: 'epi', required: true },
+  { key: 'cas_conf_decedes', label: 'Nouveaux cas confirmés décédés', group: 'epi', required: true,
+    help: 'Confirmés ce jour et déjà décédés au moment de la confirmation.' },
+  { key: 'cas_conf_ppl', label: 'dont Personnel de Première Ligne (PPL)', group: 'epi', required: true,
+    help: 'Parmi les nouveaux cas confirmés du jour (vivants + décédés).' },
+  { key: 'deces_parmi_confirmes', label: 'Nouveaux décès parmi les cas confirmés', group: 'epi', required: true,
+    help: 'Cas confirmés vivants les jours précédents, décédés aujourd’hui. Ce ne sont pas de nouveaux cas.' },
+  { key: 'gueris', label: 'Nouveaux guéris du jour', group: 'epi', required: true },
+  { key: 'deces_non_confirmes', label: 'Décès probables / communautaires (non confirmés)', group: 'epi', required: false,
+    help: 'Suivis à part : jamais ajoutés au cumul des décès parmi les cas confirmés.' },
+  // II. Investigations
   { key: 'alertes_validees', label: 'Alertes validées du jour', short: 'A', group: 'inv', required: true,
     help: "Chiffre transmis par l'équipe Alertes. Aucun détail d'alerte n'est stocké." },
   { key: 'inv_report_entrant', label: 'Report des investigations entrant', short: 'R', group: 'inv', required: true, carry: true,
@@ -83,7 +94,7 @@ export const ratio = (num, den) => (den > 0 ? num / den : null); // null => « N
 
 /** Fiche vide (tous les champs à null) */
 export function emptyReport(date, zs_id) {
-  const r = { date, zs_id, statut: 'brouillon', rapport_nul: false, motifs_inv: [], motifs_suivi: [],
+  const r = { date, zs_id, statut: 'brouillon', rapport_nul: false, motifs_inv: [], motifs_suivi: [], nouvelles_as: [],
     motif_autre: '', justif_report_inv: '', justif_report_ct: '', commentaire: '' };
   for (const k of NUM_KEYS) r[k] = null;
   return r;
@@ -98,7 +109,7 @@ export function carryOver(prev) {
 
 /** Rapport nul : tout à zéro sauf les reports, qui restent ceux de la veille. */
 export function applyZeroReport(r, prev) {
-  const out = { ...r, rapport_nul: true };
+  const out = { ...r, rapport_nul: true, nouvelles_as: [] };
   for (const k of NUM_KEYS) out[k] = 0;
   const carry = carryOver(prev);
   Object.assign(out, carry);
@@ -116,6 +127,8 @@ export function compute(r) {
   const vus = z(r.ct_vus);
   const nonVus = Math.max(0, aSuivre - vus);
   return {
+    cas_conf_total: z(r.cas_conf_vivants) + z(r.cas_conf_decedes),
+    deces_confirmes_jour: z(r.cas_conf_decedes) + z(r.deces_parmi_confirmes),
     inv_non_faites: Math.max(0, A - Ij),
     inv_report_restant: Math.max(0, R - Ir),
     inv_report_sortant: Math.max(0, A - Ij) + Math.max(0, R - Ir),
@@ -152,6 +165,8 @@ export function validate(r, { prev = null, seuilSuivi = 0.8 } = {}) {
     const v = val(f.key);
     if (v !== null && (v < 0 || !Number.isInteger(v))) E(f.key, `${f.label} : entier positif attendu.`);
   }
+  if (val('cas_conf_ppl') !== null && val('cas_conf_ppl') > c.cas_conf_total)
+    E('cas_conf_ppl', `PPL (${val('cas_conf_ppl')}) > nouveaux cas confirmés du jour (${c.cas_conf_total}).`);
   if (val('inv_realisees_jour') !== null && val('alertes_validees') !== null && val('inv_realisees_jour') > val('alertes_validees'))
     E('inv_realisees_jour', 'Investigations réalisées du jour (Ij) > alertes validées (A).');
   if (val('inv_realisees_report') !== null && val('inv_report_entrant') !== null && val('inv_realisees_report') > val('inv_report_entrant'))

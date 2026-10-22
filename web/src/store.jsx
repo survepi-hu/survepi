@@ -3,6 +3,7 @@ import { createLocalAdapter } from './data/local.js';
 import { createSupabaseAdapter } from './data/supabase.js';
 import { DEMO_SETTINGS } from './data/demoSeed.js';
 import { indexReports, localParts } from './domain/indicators.js';
+import { zsAvecDatesCas } from './domain/epi.js';
 import { planReminders, planDeferralReminders, dispatch } from './domain/reminders.js';
 
 const URL_ = import.meta.env.VITE_SUPABASE_URL;
@@ -41,7 +42,11 @@ export function StoreProvider({ children }) {
   const np = useMemo(() => localParts(new Date(tick), settings.fuseau), [tick, settings.fuseau]);
 
   const reload = useCallback(async () => {
-    try { setData(await adapter.loadAll()); } catch (e) { setError(e.message); }
+    try {
+      const d = await adapter.loadAll();
+      // Dates du 1er / dernier cas confirmé complétées par les fiches : bascule touchée / post-flambée automatique
+      setData({ ...d, areas: d.areas || [], zs_ref: d.zs, zs: zsAvecDatesCas(d.zs, d.reports) });
+    } catch (e) { setError(e.message); }
   }, []);
 
   useEffect(() => {
@@ -94,6 +99,7 @@ export function StoreProvider({ children }) {
     saveReport: (row, msg) => run(() => adapter.saveReport(row), msg),
     insert: (t, row, msg) => run(() => adapter.insert(t, row), msg),
     update: (t, id, patch, msg) => run(() => adapter.update(t, id, patch), msg),
+    remove: (t, id, msg) => run(() => adapter.remove(t, id), msg),
     upsertFollowup: (row) => run(() => adapter.upsertFollowup(row)),
     saveSettings: (s) => run(() => adapter.saveSettings(s), 'Paramètres enregistrés'),
     saveAssignments: (id, z) => run(() => adapter.saveAssignments(id, z), 'Affectations enregistrées'),

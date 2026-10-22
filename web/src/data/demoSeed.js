@@ -49,6 +49,10 @@ const ZS = [
   { id: 'faradje', nom: 'Faradje', code_dhis2: 'DEMO-FAR', hotspot: false, premier: null, dernier: null, as_total: 19, as_affectees: 0, base: 0, suivi: 1, ct0: 0, lat: 3.74, lon: 29.71 },
 ];
 
+// Noms d'aires de santé FICTIFS (démo)
+const SYLL = ['ba', 'ke', 'lo', 'ma', 'ndi', 'ga', 'zi', 'tu', 'bo', 'ri', 'nya', 'se', 'wa', 'ku', 'mbe', 'do'];
+const nomAs = (rand) => { const n = 2 + Math.floor(rand() * 2); let s = ''; for (let i = 0; i < n; i++) s += SYLL[Math.floor(rand() * SYLL.length)]; return s[0].toUpperCase() + s.slice(1); };
+
 const phone = (i) => `+243 81 000 ${String(100 + i).padStart(4, '0')}`;
 
 export function buildDemo(now = new Date()) {
@@ -81,8 +85,20 @@ export function buildDemo(now = new Date()) {
       epidemiologistes: ['isiro', 'wamba', 'pawa'].includes(z.id) ? 'Épidémiologiste superviseur Isiro / Wamba' : 'Équipe provinciale',
       dos: z.premier === null ? '' : 'DOS ' + z.nom, frequence: 'quotidienne', jour_hebdo: 1, heure_limite: null,
       lat: z.lat, lon: z.lon, actif: true, date_debut: addDays(T, -34),
+      // Valeurs initiales (situation de référence la veille du 1er jour de la démo)
+      base_date: z.premier === null || z.premier > -35 ? null : addDays(T, -35),
+      base_confirmes: z.premier === null ? 0 : Math.round(z.base * 2.5), base_deces: z.premier === null ? 0 : Math.round(z.base * 0.8),
+      base_gueris: z.premier === null ? 0 : Math.round(z.base), base_ppl: z.premier === null ? 0 : Math.floor(z.base / 3), base_deces_non_confirmes: 0,
     };
   });
+  // Aires de santé : une partie déjà touchée avant la démo, d'autres le deviennent au fil des jours
+  const areas = [];
+  for (const z of ZS) {
+    const noms = new Set();
+    while (noms.size < z.as_total) noms.add(nomAs(r));
+    [...noms].forEach((nom, i) => areas.push({ id: `as-${z.id}-${i}`, zs_id: z.id, nom, actif: true,
+      touchee_le: z.premier !== null && i < Math.max(0, z.as_affectees - 3) ? addDays(T, Math.min(z.premier, -35)) : null }));
+  }
   const assignments = actors.flatMap((a) => (a.zs_ids || []).map((zs_id) => ({ actor_id: a.id, zs_id })));
 
   // ---------------- Fiches journalières
@@ -91,6 +107,8 @@ export function buildDemo(now = new Date()) {
   for (const z of ZS) {
     let carry = { inv: 0, ct: 0, nonvus: 0, nonListes: 0 };
     let burst = z.ct0; // listage initial au 1er jour actif
+    const zb = zs.find((x) => x.id === z.id);
+    let enCours = zb.base_date ? zb.base_confirmes - zb.base_deces - zb.base_gueris : 0; // guéris et décès bornés par les cas en cours
     for (let k = 0; k <= 34; k++) {
       const d = addDays(start, k);
       const ago = -k + 34; // 0 = aujourd'hui
@@ -103,11 +121,29 @@ export function buildDemo(now = new Date()) {
       const actif = zp.date_premier_cas && d >= zp.date_premier_cas;
       const rep = emptyReport(d, z.id);
       for (const key of NUM_KEYS) rep[key] = 0;
+      rep.nouvelles_as = [];
       rep.rapporteur_id = `r-${z.id}`;
       if (!actif) {
         rep.rapport_nul = true;
         rep.ct_report = carry.ct; rep.inv_report_entrant = carry.inv;
       } else {
+        // I. Situation épidémiologique : événements du jour (pas de nouveau cas après la date du dernier cas)
+        const avecCas = z.dernier === null || ago >= -z.dernier;
+        if (avecCas) {
+          rep.cas_conf_vivants = r() < 0.3 ? 1 + (r() < 0.25 ? 1 : 0) : 0;
+          rep.cas_conf_decedes = r() < 0.06 ? 1 : 0;
+          if (ago === -z.dernier && rep.cas_conf_vivants + rep.cas_conf_decedes === 0) rep.cas_conf_vivants = 1;
+          rep.cas_conf_ppl = rep.cas_conf_vivants + rep.cas_conf_decedes > 0 && r() < 0.15 ? 1 : 0;
+          const libres = areas.filter((a) => a.zs_id === z.id && !a.touchee_le && !reports.some((x) => (x.nouvelles_as || []).includes(a.id)));
+          const touchees = areas.filter((a) => a.zs_id === z.id).length - libres.length;
+          if (rep.cas_conf_vivants + rep.cas_conf_decedes > 0 && libres.length && touchees < z.as_affectees && r() < 0.5) rep.nouvelles_as = [libres[0].id];
+        }
+        enCours += rep.cas_conf_vivants;
+        rep.deces_parmi_confirmes = enCours > 0 && r() < 0.05 ? 1 : 0;
+        enCours -= rep.deces_parmi_confirmes;
+        rep.gueris = Math.min(enCours, r() < 0.2 ? 1 + (r() < 0.3 ? 1 : 0) : 0);
+        enCours -= rep.gueris;
+        rep.deces_non_confirmes = r() < 0.04 ? 1 : 0;
         let base = z.base * (ago < 12 ? 1.2 : 0.8);
         if (z.id === 'dungu' && ago <= 2) base = 4;
         const A = Math.max(0, Math.round(base * (0.55 + r() * 0.9)));
@@ -154,7 +190,7 @@ export function buildDemo(now = new Date()) {
       if (r() < 0.12) sub = hhmmToMin('16:35') + Math.floor(r() * 80);
       if (ago === 0) sub = { isiro: hhmmToMin('11:40'), gombari: hhmmToMin('11:55'), faradje: hhmmToMin('11:20') }[z.id] ?? null;
       if (ago === 0 && z.id === 'boma-mangbetu') { // brouillon commencé, pas soumis
-        rep.statut = 'brouillon'; rep.ct_vus = null; rep.reco_actifs = null; rep.motifs_suivi = []; rep.started_at = ts(d, hhmmToMin('10:50'));
+        rep.statut = 'brouillon'; rep.ct_vus = null; rep.reco_actifs = null; rep.gueris = null; rep.cas_conf_ppl = null; rep.motifs_suivi = []; rep.started_at = ts(d, hhmmToMin('10:50'));
       } else {
         rep.submitted_at = ts(d, sub);
         rep.started_at = ts(d, sub - 25);
@@ -271,5 +307,5 @@ export function buildDemo(now = new Date()) {
   const nuit = new Date(ts(addDays(T, -1), hhmmToMin('23:30')));
   const derniere_sauvegarde = { at: nuit.toISOString(), statut: 'ok', duree_s: 74, fichier: `survepi-${addDays(T, -1).replace(/-/g, '')}-2330.json.gz`, dossier_url: null,
     compteurs: { daily_reports: reports.length, investigations: investigations.length, contacts: contacts.length, contact_followups: followups.length, notifications: notifications.length } };
-  return { settings: { ...DEMO_SETTINGS, derniere_sauvegarde }, zs, actors, assignments, reports, notifications, investigations, contacts, followups, deferrals, audit: [], generated_for: T };
+  return { settings: { ...DEMO_SETTINGS, derniere_sauvegarde }, zs, areas, actors, assignments, reports, notifications, investigations, contacts, followups, deferrals, audit: [], generated_for: T };
 }

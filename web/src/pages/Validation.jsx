@@ -5,6 +5,7 @@ import { addDays, fmtDate, fmtTime } from '../domain/time.js';
 import { Table, Section, Pill, pct, num, Empty, Modal, Field, Tabs } from '../ui.jsx';
 import { StatutPill, zsName, actorName } from './common.jsx';
 import { timeliness } from '../domain/indicators.js';
+import { detection, rapportPrecedent } from '../domain/epi.js';
 
 export default function Validation({ go }) {
   const s = useStore();
@@ -22,7 +23,8 @@ export default function Validation({ go }) {
     const prev = s.idx.get(`${addDays(r.date, -1)}|${r.zs_id}`);
     const v = validate(r, { prev, seuilSuivi: s.settings.seuil_suivi });
     const z = s.data.zs.find((x) => x.id === r.zs_id);
-    return { r, v, c: compute(r), comp: completeness(r, { prev }), t: timeliness(r, z, r.date, s.settings, s.np) };
+    const d = detection(r, rapportPrecedent(r.zs_id, r.date, s.data.reports), s.data.versions.filter((x) => x.report_id === r.id)).compte;
+    return { r, v, d, c: compute(r), comp: completeness(r, { prev }), t: timeliness(r, z, r.date, s.settings, s.np) };
   };
   const list = rows.map(enrich);
   const conformes = list.filter((x) => !x.v.errors.length && x.comp === 1);
@@ -54,15 +56,21 @@ export default function Validation({ go }) {
       )}>
         {list.length === 0 ? <Empty>Rien à traiter dans cette file.</Empty> : (
           <Table>
-            <thead><tr><th>Date</th><th>ZS</th><th>Statut</th><th className="n">Soumise</th><th className="n">Complétude</th><th className="n">Taux inv.</th><th className="n">% vus</th><th>1re validation</th><th>Anomalies</th><th></th></tr></thead>
+            <thead><tr><th>Date</th><th>ZS</th><th>Statut</th><th className="n">Soumise</th><th className="n">Complétude</th><th title="Nouvelles / inchangées / corrigées après validation / non renseignées, par rapport à la fiche précédente">Détection</th><th className="n">Taux inv.</th><th className="n">% vus</th><th>1re validation</th><th>Anomalies</th><th></th></tr></thead>
             <tbody>
-              {list.map(({ r, v, c, comp, t }) => (
+              {list.map(({ r, v, d, c, comp, t }) => (
                 <tr key={r.id}>
                   <td>{fmtDate(r.date, true)}</td>
                   <td><strong>{zsName(s, r.zs_id)}</strong>{r.rapport_nul && <Pill tone="muted">nul</Pill>}{(() => { const n = (s.data.attachments || []).filter((a) => a.report_id === r.id).length; return n ? <Pill tone="info" title="Pièces jointes (fiche papier)">{n} PJ</Pill> : null; })()}</td>
                   <td><StatutPill statut={r.statut} /></td>
                   <td className="n">{fmtTime(r.submitted_at)} {t === 'en_retard' && <Pill tone="warn">retard</Pill>}</td>
                   <td className="n">{pct(comp)}</td>
+                  <td className="detection-cell">
+                    <span className="etat etat-nouveau" title="Nouvelles">{d.nouveau} N</span>
+                    <span className="etat etat-inchange" title="Inchangées">{d.inchange} I</span>
+                    {d.corrige > 0 && <span className="etat etat-corrige" title="Corrigées après validation">{d.corrige} C</span>}
+                    {d.non_renseigne > 0 && <span className="etat etat-non_renseigne" title="Non renseignées">{d.non_renseigne} NR</span>}
+                  </td>
                   <td className="n">{pct(c.taux_inv)}</td>
                   <td className="n">{pct(c.taux_suivi)}</td>
                   <td>{r.validated_zs_by ? actorName(s, r.validated_zs_by) : '–'}</td>

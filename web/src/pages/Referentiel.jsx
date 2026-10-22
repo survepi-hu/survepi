@@ -6,6 +6,7 @@ import { fmtDate } from '../domain/time.js';
 import { Section, Table, Tabs, Pill, Modal, Field, provinceNom } from '../ui.jsx';
 import { CatPill, actorName } from './common.jsx';
 import ImportComptes from './ImportComptes.jsx';
+import { AiresSante, ValeursInitiales, ROLES_EPI } from './AiresSante.jsx';
 
 const slug = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -16,6 +17,8 @@ export default function Referentiel() {
   const [ea, setEa] = useState(null);
   const [acct, setAcct] = useState(null); // { actor, action, busy, result, error }
   const [imp, setImp] = useState(false);
+  const [vi, setVi] = useState(null);
+  const canBase = ROLES_EPI.includes(s.role);
   const T = s.np.date;
   const canZs = ['admin', 'team_lead'].includes(s.role);
   const canActors = s.role === 'admin';
@@ -26,7 +29,7 @@ export default function Referentiel() {
     <div className="page">
       <header className="page-head">
         <h1>Zones de santé et acteurs</h1>
-        <Tabs value={tab} onChange={setTab} tabs={[['zs', `Zones de santé · ${s.data.zs.length}`], ['acteurs', `Acteurs · ${people.length}`]]} />
+        <Tabs value={tab} onChange={setTab} tabs={[['zs', `Zones de santé · ${s.data.zs.length}`], ['as', `Aires de santé · ${(s.data.areas || []).length}`], ['acteurs', `Acteurs · ${people.length}`]]} />
       </header>
 
       {tab === 'zs' && (
@@ -35,7 +38,7 @@ export default function Referentiel() {
           <p className="muted small">Bascule automatique : en préparation → touchée à la date du 1er cas confirmé ; touchée → post-flambée après {s.settings.jours_post_flambee} jours sans nouveau cas.</p>
           <Section aside={canZs && <button className="btn primary" onClick={() => setEz({ nom: '', hotspot: false, frequence: 'quotidienne', jour_hebdo: 1, actif: true, categorie_manuelle: 'preparation' })}>Ajouter une ZS</button>}>
             <Table>
-              <thead><tr><th>ZS</th><th>Code DHIS2</th><th>Catégorie</th><th>1er cas confirmé</th><th className="n">Jours sans cas</th><th className="n">AS affectées</th><th>MCZ</th><th>Rapporteur / suppléant</th><th>Fréquence</th><th>Limite</th><th></th></tr></thead>
+              <thead><tr><th>ZS</th><th>Code DHIS2</th><th>Catégorie</th><th>1er cas confirmé</th><th className="n">Jours sans cas</th><th className="n">AS affectées</th><th>MCZ</th><th>Rapporteur / suppléant</th><th>Fréquence</th><th>Limite</th><th>Valeurs initiales</th><th></th></tr></thead>
               <tbody>
                 {s.data.zs.map((z) => (
                   <tr key={z.id} className={z.actif === false ? 'off' : ''}>
@@ -49,7 +52,9 @@ export default function Referentiel() {
                     <td>{actorName(s, z.rapporteur_id)}<small className="blk muted">{actorName(s, z.suppleant_id)}</small></td>
                     <td>{z.frequence}{z.frequence === 'hebdomadaire' ? ` (j${z.jour_hebdo})` : ''}</td>
                     <td>{z.heure_limite || s.settings.heure_limite}</td>
-                    <td>{canZs && <button className="btn ghost small" onClick={() => setEz({ ...z })}>Modifier</button>}</td>
+                    <td>{z.base_date ? <span title={`Validé par ${z.base_valide_par || '?'}${z.base_valide_le ? ` le ${fmtDate(z.base_valide_le)}` : ''}`}>au {fmtDate(z.base_date, true)} · {z.base_confirmes ?? 0} conf.</span> : <span className="muted">reconstituées</span>}
+                      {canBase && <button className="btn ghost small" onClick={() => setVi(z)}>{z.base_date ? 'Corriger' : 'Saisir'}</button>}</td>
+                    <td>{canZs && <button className="btn ghost small" onClick={() => setEz({ ...((s.data.zs_ref || s.data.zs).find((x) => x.id === z.id) || z) })}>Modifier</button>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -57,6 +62,8 @@ export default function Referentiel() {
           </Section>
         </>
       )}
+
+      {tab === 'as' && <AiresSante />}
 
       {tab === 'acteurs' && (
         <Section aside={canActors && <div className="row"><button className="btn ghost" onClick={() => setImp(true)}>Importer depuis Excel</button><button className="btn primary" onClick={() => setEa({ nom: '', fonction: '', role: 'rapporteur', canal_prefere: 'whatsapp', statut: 'actif', actif: true, zs_ids: [] })}>Ajouter un acteur</button></div>}>
@@ -152,6 +159,7 @@ export default function Referentiel() {
           }}>Enregistrer</button></div>
         </Modal>
       )}
+      {vi && <ValeursInitiales zs={vi} onClose={() => setVi(null)} />}
       {imp && <ImportComptes onClose={() => setImp(false)} />}
       {acct && (() => {
         const a = acct.actor;

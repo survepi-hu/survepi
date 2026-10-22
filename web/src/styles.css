@@ -6,7 +6,7 @@
   --brand: #0086c4; --brand-deep: #004e80; --brand-ink: #ffffff; --brand-hover: rgb(255 255 255 / .16); --brand-line: rgb(255 255 255 / .28); --brand-dim: rgb(255 255 255 / .82);
   --good: #2b7a46; --good-bg: #e1f0e6; --warn: #a86d12; --warn-bg: #f9eed7; --bad: #b9382b; --bad-bg: #f8e0dc;
   --pending: #5f7a92; --pending-bg: #e4edf4; --na: #c6d3de; --info-bg: #dceefa; --hot: #8a2c5a; --hot-bg: #f4e2ea;
-  --s1: #0086c4; --s2: #eb6834;
+  --s1: #0086c4; --s2: #eb6834; --s3: #6b4fa3;
   --f-display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
   --f-body: "Source Sans 3", "Segoe UI", system-ui, -apple-system, sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -18,7 +18,7 @@
   --brand: #0a5e92; --brand-ink: #ffffff; --brand-hover: rgb(255 255 255 / .12); --brand-line: rgb(255 255 255 / .2); --brand-dim: rgb(255 255 255 / .78);
   --good: #62c083; --good-bg: #1d3426; --warn: #e2a64a; --warn-bg: #3a2e16; --bad: #ef6d5f; --bad-bg: #3d201c;
   --pending: #93a6b9; --pending-bg: #1d3044; --na: #2c4660; --info-bg: #123a58; --hot: #d880a9; --hot-bg: #3a2130;
-  --s1: #3fb0e8; --s2: #d95926; color-scheme: dark;
+  --s1: #3fb0e8; --s2: #d95926; --s3: #a58ad6; color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -373,3 +373,19 @@ ul.plain { margin: 0 0 12px; padding-left: 18px; display: flex; flex-direction: 
 .brand-logo-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: none; }
 .brand-logo-wrap .brand-mark { font-size: .6rem; padding: 2px 4px; }
 .login-bar .brand-mark { border-color: #fff; color: #fff; font-size: .7rem; }
+
+/* Matrice en 3 rubriques + détection des données */
+.rubrique { font-size: 1.05rem; margin: 22px 0 6px; color: var(--brand-deep); border-bottom: 2px solid var(--brand); padding-bottom: 4px; }
+.fiche .rubrique:first-child { margin-top: 4px; }
+.etat { display: inline-block; font-size: .68rem; font-weight: 700; letter-spacing: .02em; padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; white-space: nowrap; }
+.etat-nouveau { background: var(--accent-soft); color: var(--accent); }
+.etat-inchange { background: var(--surface-2); color: var(--muted); }
+.etat-corrige { background: var(--warn-bg); color: var(--warn); }
+.etat-non_renseigne { background: var(--bad-bg); color: var(--bad); }
+.detection-resume { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0 12px; font-size: .9rem; }
+.detection-resume .etat { margin-left: 0; font-size: .75rem; padding: 2px 8px; }
+.nouveautes-liste { margin: 0; padding-left: 18px; }
+.nouveautes-liste li { margin: 2px 0; }
+.detection-cell { white-space: nowrap; } .detection-cell .etat { margin: 0 3px 0 0; }
+
+.chart .line.s-3 { stroke: var(--s3); } .chart .pt.s-3 { fill: var(--s3); } .sw-3 { background: var(--s3); }
