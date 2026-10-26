@@ -139,6 +139,14 @@ export function createSupabaseAdapter(url, key) {
       const payload = clean('daily_reports', row);
       delete payload.submitted_at; delete payload.started_at; delete payload.validated_at; delete payload.validated_by; delete payload.version;
       try {
+        // Fiche existante : UPDATE simple. Un upsert passe d'abord par le contrôle d'INSERT de la base, qui refuse
+        // une « nouvelle » fiche au statut validé, rouvert ou à corriger (erreur à la validation).
+        if (row.id) {
+          const { id, ...patch } = payload;
+          const { data, error } = await sb.from('daily_reports').update(patch).eq('id', id).select().maybeSingle();
+          if (error) throw new Error(error.message);
+          if (data) return data;
+        }
         return ok(await sb.from('daily_reports').upsert(payload, { onConflict: 'date,zs_id' }).select().single());
       } catch (e) {
         if (!fromQueue && isNetwork(e)) {
