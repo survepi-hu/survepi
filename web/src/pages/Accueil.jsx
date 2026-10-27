@@ -49,11 +49,12 @@ export default function Accueil({ go }) {
       )}
 
       <Band items={[
-        { label: 'Nouveaux cas confirmés', value: num(epi.total), sub: `${num(epi.vivants)} vivants · ${num(epi.decedes)} décédés · ${num(epi.ppl)} PPL`, tone: epi.total ? 'bad' : null },
+        { label: 'Nouveaux cas confirmés', value: num(epi.total), sub: `${num(epi.vivants)} vivants · ${num(epi.decedes)} décédés · ${num(epi.ppl)} PPL · ${num(epi.moins5)} < 5 ans`, tone: epi.total ? 'bad' : null },
         { label: 'Nouvelles AS touchées', value: num(epi.nouvelles_as.length), sub: epi.nouvelles_as.join(', ') || `${num(epi.as_touchees)} au total`, tone: epi.nouvelles_as.length ? 'warn' : null },
         { label: 'Jours sans nouveau cas', value: epi.jours_sans_cas === null ? '–' : num(epi.jours_sans_cas), sub: 'toutes ZS' },
         { label: 'Cumul confirmés', value: num(epi.confirmes), sub: `${num(epi.deces)} décès · ${num(epi.gueris_cumul)} guéris` },
         { label: 'Cas en cours', value: num(epi.actifs), sub: `létalité ${epi.letalite === null ? 'NA' : pct(epi.letalite, 1)}` },
+        { label: 'Enfants < 5 ans (cumul)', value: num(epi.moins5_cumul), sub: `${num(epi.deces_moins5_cumul)} décès · ${num(epi.actifs_moins5)} en cours` },
       ]} />
 
       <Band items={[

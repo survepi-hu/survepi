@@ -109,6 +109,9 @@ const BASE = [
   ['base_deces', 'Cumul décès parmi les confirmés'],
   ['base_gueris', 'Cumul guéris'],
   ['base_ppl', 'Cumul PPL confirmés'],
+  ['base_moins5', 'Cumul confirmés de moins de 5 ans'],
+  ['base_deces_moins5', 'Cumul décès de moins de 5 ans'],
+  ['base_gueris_moins5', 'Cumul guéris de moins de 5 ans'],
   ['base_deces_non_confirmes', 'Décès probables / communautaires (à part)'],
 ];
 
@@ -125,6 +128,8 @@ export function ValeursInitiales({ zs, onClose }) {
   const ok = !f.base_date || (f.base_valide_par.trim() && f.base_valide_le);
   const incoherent = f.base_date && n(f.base_deces) + n(f.base_gueris) > n(f.base_confirmes);
   const pplTrop = f.base_date && n(f.base_ppl) > n(f.base_confirmes);
+  const m5Trop = f.base_date && (n(f.base_moins5) > n(f.base_confirmes) || n(f.base_deces_moins5) > n(f.base_deces) || n(f.base_gueris_moins5) > n(f.base_gueris)
+    || n(f.base_deces_moins5) + n(f.base_gueris_moins5) > n(f.base_moins5));
 
   const save = async () => {
     const patch = f.base_date
@@ -142,7 +147,7 @@ export function ValeursInitiales({ zs, onClose }) {
         {BASE.map(([k, l]) => (
           <Field key={k} label={l}>
             <input id={`vi-${k}`} type="number" min="0" inputMode="numeric" disabled={!f.base_date} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} />
-            {fiches && <small className="blk muted">actuellement dans l’app : {num({ base_confirmes: fiches.confirmes, base_deces: fiches.deces, base_gueris: fiches.gueris, base_ppl: fiches.ppl, base_deces_non_confirmes: fiches.deces_non_confirmes }[k])}</small>}
+            {fiches && <small className="blk muted">actuellement dans l’app : {num({ base_confirmes: fiches.confirmes, base_deces: fiches.deces, base_gueris: fiches.gueris, base_ppl: fiches.ppl, base_moins5: fiches.moins5, base_deces_moins5: fiches.deces_moins5, base_gueris_moins5: fiches.gueris_moins5, base_deces_non_confirmes: fiches.deces_non_confirmes }[k])}</small>}
           </Field>
         ))}
         <Field label="Validé par (équipe data)"><input id="vi-par" disabled={!f.base_date} value={f.base_valide_par} onChange={(e) => setF({ ...f, base_valide_par: e.target.value })} /></Field>
@@ -151,11 +156,12 @@ export function ValeursInitiales({ zs, onClose }) {
       {f.base_date && avantRef > 0 && <p className="note tone-warn">{avantRef} fiche(s) de {zs.nom} datée(s) jusqu’au {fmtDate(f.base_date)} ne seront plus additionnées aux cumuls (elles restent visibles et comptent toujours pour la complétude, les investigations et le suivi).</p>}
       {incoherent && <p className="field-error">Décès + guéris dépassent les cas confirmés.</p>}
       {pplTrop && <p className="field-error">PPL confirmés supérieurs aux cas confirmés.</p>}
+      {m5Trop && <p className="field-error">Moins de 5 ans incohérents : chaque cumul des moins de 5 ans doit rester inférieur au cumul total correspondant, et leurs décès + guéris ne peuvent pas dépasser leurs confirmés.</p>}
       {f.base_date && n(f.base_confirmes) > 0 && <p className="muted small">Létalité initiale : {pct(n(f.base_deces) / n(f.base_confirmes), 1)}</p>}
       <p className="muted small">Pour les AS touchées avant cette date : onglet « Aires de santé », champ « Touchée le ».</p>
       <div className="actions">
         <button className="btn ghost" onClick={onClose}>Annuler</button>
-        <button className="btn primary" disabled={!ok || incoherent || pplTrop} onClick={save}>{f.base_date ? 'Enregistrer' : 'Enregistrer sans valeurs initiales'}</button>
+        <button className="btn primary" disabled={!ok || incoherent || pplTrop || m5Trop} onClick={save}>{f.base_date ? 'Enregistrer' : 'Enregistrer sans valeurs initiales'}</button>
       </div>
     </Modal>
   );

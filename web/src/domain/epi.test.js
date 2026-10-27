@@ -71,4 +71,18 @@ describe('détection des données', () => {
     expect(etats.alertes_validees.etat).toBe('corrige');
     expect(compte.non_renseigne).toBeGreaterThan(0);
   });
+  it('moins de 5 ans : cumuls, létalité, contrôles', () => {
+    const z5 = { ...zs, base_moins5: 3, base_deces_moins5: 1, base_gueris_moins5: 1 };
+    const reps = [
+      f('2026-10-01', { cas_conf_vivants: 2, cas_conf_decedes: 1, cas_conf_moins5: 2, deces_moins5: 1, gueris: 1, gueris_moins5: 0 }),
+      f('2026-10-02', { cas_conf_vivants: 0, cas_conf_decedes: 0, cas_conf_moins5: 0, deces_parmi_confirmes: 1, deces_moins5: 0, gueris: 1, gueris_moins5: 1 }),
+    ];
+    const c = cumulsZs(z5, '2026-10-02', reps);
+    expect([c.moins5, c.deces_moins5, c.gueris_moins5, c.actifs_moins5]).toEqual([5, 2, 2, 1]);
+    expect(c.letalite_moins5).toBeCloseTo(2 / 5);
+    const v = validate({ cas_conf_vivants: 1, cas_conf_decedes: 0, cas_conf_moins5: 2, deces_parmi_confirmes: 0, deces_moins5: 1, gueris: 0, gueris_moins5: 1 });
+    expect(v.errors.map((e) => e.field).sort()).toEqual(['cas_conf_moins5', 'deces_moins5', 'gueris_moins5']);
+    expect(avertissementsEpi({ id: 'x', date: '2026-10-03', gueris: 1, gueris_moins5: 1, deces_moins5: 1, deces_parmi_confirmes: 1, cas_conf_vivants: 0, cas_conf_moins5: 0 }, z5, reps)
+      .some((w) => w.field === 'gueris_moins5')).toBe(true);
+  });
 });

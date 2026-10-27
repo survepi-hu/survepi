@@ -87,7 +87,7 @@ describe('historique', () => {
 
   it('une fiche historique compte dans la complétude, pas dans la promptitude', () => {
     const settings = { heure_limite: '16:30', seuil_suivi: 0.8, fuseau: 'Africa/Lubumbashi', jours_post_flambee: 42 };
-    const full = { cas_conf_vivants: 0, cas_conf_decedes: 0, cas_conf_ppl: 0, deces_parmi_confirmes: 0, gueris: 0, alertes_validees: 1, inv_report_entrant: 0, inv_realisees_jour: 1, inv_realisees_report: 0, ct_report: 0, ct_identifies: 0, ct_listes_24h: 0,
+    const full = { cas_conf_vivants: 0, cas_conf_decedes: 0, cas_conf_ppl: 0, cas_conf_moins5: 0, deces_parmi_confirmes: 0, deces_moins5: 0, gueris: 0, gueris_moins5: 0, alertes_validees: 1, inv_report_entrant: 0, inv_realisees_jour: 1, inv_realisees_report: 0, ct_report: 0, ct_identifies: 0, ct_listes_24h: 0,
       ct_sortie_21j: 0, ct_sortie_symptomatiques: 0, ct_sortie_confirmes: 0, ct_sortie_perdus: 0, ct_sortie_deplaces: 0, ct_sortie_decedes: 0, ct_sortie_doublons: 0, ct_vus: 0, reco_actifs: 2 };
     const reports = [{ ...full, date: '2026-09-01', zs_id: 'isiro', statut: 'valide_prov', source: 'historique', submitted_at: null },
       { ...full, alertes_validees: 3, date: '2026-09-01', zs_id: 'wamba', statut: 'valide_prov', source: 'historique', submitted_at: null }];

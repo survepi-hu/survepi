@@ -41,19 +41,22 @@ export default function Exports() {
   const epi = (d = s.date) => {
     const p = situationProvince(s.visibleZs, d, s.data.reports, areas);
     const ligne = (nom, j, x) => ({ ZS: nom, 'Nouvelles AS touchées': x.nas, 'AS touchées (cumul)': x.ast, 'Jours sans nouveau cas confirmé': x.jsc ?? 'NA',
-      'Nouveaux confirmés vivants': j.vivants ?? '', 'Nouveaux confirmés décédés': j.decedes ?? '', 'Nouveaux confirmés (total)': j.total ?? '', 'dont PPL': j.ppl ?? '',
-      'Nouveaux décès parmi confirmés': j.deces_parmi ?? '', 'Nouveaux guéris': j.gueris ?? '', 'Cumul confirmés': x.c, 'Cumul décès (confirmés)': x.dc,
-      'Létalité (%)': P(x.let), 'Cumul guéris': x.g, 'Cumul PPL confirmés': x.ppl, 'Cas confirmés en cours': x.act, 'Décès probables / communautaires (cumul, à part)': x.dnc });
+      'Nouveaux confirmés vivants': j.vivants ?? '', 'Nouveaux confirmés décédés': j.decedes ?? '', 'Nouveaux confirmés (total)': j.total ?? '', 'dont PPL': j.ppl ?? '', 'dont < 5 ans': j.moins5 ?? '',
+      'Nouveaux décès parmi confirmés': j.deces_parmi ?? '', 'Décès du jour < 5 ans': j.deces_moins5 ?? '', 'Nouveaux guéris': j.gueris ?? '', 'Guéris du jour < 5 ans': j.gueris_moins5 ?? '', 'Cumul confirmés': x.c, 'Cumul décès (confirmés)': x.dc,
+      'Létalité (%)': P(x.let), 'Cumul guéris': x.g, 'Cumul PPL confirmés': x.ppl, 'Cas confirmés en cours': x.act, 'Décès probables / communautaires (cumul, à part)': x.dnc,
+      'Cumul confirmés < 5 ans': x.m5, 'Cumul décès < 5 ans': x.d5, 'Létalité < 5 ans (%)': P(x.l5), 'Cumul guéris < 5 ans': x.g5, 'En cours < 5 ans': x.a5 });
     const rows = p.rows.map((r) => ligne(r.zs.nom, r.jour || {}, { nas: r.nouvelles_as.join(', '), ast: r.as_total ? `${r.as_touchees}/${r.as_total}` : r.as_touchees, jsc: r.jours_sans_cas,
-      c: r.cumuls.confirmes, dc: r.cumuls.deces, let: r.cumuls.letalite, g: r.cumuls.gueris, ppl: r.cumuls.ppl, act: r.cumuls.actifs, dnc: r.cumuls.deces_non_confirmes }));
+      c: r.cumuls.confirmes, dc: r.cumuls.deces, let: r.cumuls.letalite, g: r.cumuls.gueris, ppl: r.cumuls.ppl, act: r.cumuls.actifs, dnc: r.cumuls.deces_non_confirmes,
+      m5: r.cumuls.moins5, d5: r.cumuls.deces_moins5, l5: r.cumuls.letalite_moins5, g5: r.cumuls.gueris_moins5, a5: r.cumuls.actifs_moins5 }));
     const t = p.totaux;
-    rows.push(ligne('Province', t, { nas: t.nouvelles_as.join(', '), ast: t.as_touchees, jsc: t.jours_sans_cas, c: t.confirmes, dc: t.deces, let: t.letalite, g: t.gueris_cumul, ppl: t.ppl_cumul, act: t.actifs, dnc: t.deces_nc_cumul }));
+    rows.push(ligne('Province', t, { nas: t.nouvelles_as.join(', '), ast: t.as_touchees, jsc: t.jours_sans_cas, c: t.confirmes, dc: t.deces, let: t.letalite, g: t.gueris_cumul, ppl: t.ppl_cumul, act: t.actifs, dnc: t.deces_nc_cumul,
+      m5: t.moins5_cumul, d5: t.deces_moins5_cumul, l5: t.letalite_moins5, g5: t.gueris_moins5_cumul, a5: t.actifs_moins5 }));
     return rows;
   };
   const epiSerie = () => dateRange(from, to).map((d) => {
     const t = situationProvince(s.visibleZs, d, s.data.reports, areas).totaux;
-    return { Date: d, SE: epiWeek(d).label, 'Nouveaux confirmés': t.total, Vivants: t.vivants, Décédés: t.decedes, PPL: t.ppl, 'Décès parmi confirmés': t.deces_parmi, Guéris: t.gueris,
-      'Nouvelles AS': t.nouvelles_as.join(', '), 'Cumul confirmés': t.confirmes, 'Cumul décès': t.deces, 'Cumul guéris': t.gueris_cumul, 'Cumul PPL': t.ppl_cumul, 'En cours': t.actifs, 'Jours sans cas': t.jours_sans_cas ?? 'NA' };
+    return { Date: d, SE: epiWeek(d).label, 'Nouveaux confirmés': t.total, Vivants: t.vivants, Décédés: t.decedes, PPL: t.ppl, '< 5 ans': t.moins5, 'Décès parmi confirmés': t.deces_parmi, 'Décès < 5 ans': t.deces_moins5, Guéris: t.gueris, 'Guéris < 5 ans': t.gueris_moins5,
+      'Nouvelles AS': t.nouvelles_as.join(', '), 'Cumul confirmés': t.confirmes, 'Cumul décès': t.deces, 'Cumul guéris': t.gueris_cumul, 'Cumul PPL': t.ppl_cumul, 'Cumul < 5 ans': t.moins5_cumul, 'Cumul décès < 5 ans': t.deces_moins5_cumul, 'Cumul guéris < 5 ans': t.gueris_moins5_cumul, 'En cours': t.actifs, 'Jours sans cas': t.jours_sans_cas ?? 'NA' };
   });
   const reportsList = () => s.data.deferrals.filter((d) => !d.apure && zsIds.includes(d.zs_id)).map((d) => ({
     Type: d.objet, Code: d.code, ZS: zsName(s, d.zs_id), 'Date initiale': d.date_initiale, 'Ancienneté (j)': anciennete(d, s.np.date), 'N° report': d.numero,

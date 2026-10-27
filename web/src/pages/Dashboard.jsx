@@ -57,7 +57,7 @@ export default function Dashboard() {
       {tab === 'epi' && (
         <>
           <Band items={[
-            { label: 'Nouveaux cas confirmés', value: num(sit.totaux.total), sub: `${num(sit.totaux.vivants)} vivants · ${num(sit.totaux.decedes)} décédés`, tone: sit.totaux.total ? 'bad' : null },
+            { label: 'Nouveaux cas confirmés', value: num(sit.totaux.total), sub: `${num(sit.totaux.vivants)} vivants · ${num(sit.totaux.decedes)} décédés · ${num(sit.totaux.moins5)} < 5 ans`, tone: sit.totaux.total ? 'bad' : null },
             { label: 'dont PPL', value: num(sit.totaux.ppl) },
             { label: 'Nouvelles AS touchées', value: num(sit.totaux.nouvelles_as.length), sub: sit.totaux.nouvelles_as.join(', ') || null, tone: sit.totaux.nouvelles_as.length ? 'warn' : null },
             { label: 'AS touchées (cumul)', value: num(sit.totaux.as_touchees) },
@@ -72,6 +72,13 @@ export default function Dashboard() {
             { label: 'Cumul PPL confirmés', value: num(sit.totaux.ppl_cumul) },
             { label: 'Cas confirmés en cours', value: num(sit.totaux.actifs) },
             { label: 'Décès probables / communautaires (cumul, à part)', value: num(sit.totaux.deces_nc_cumul) },
+          ]} />
+          <Band items={[
+            { label: 'Moins de 5 ans : nouveaux confirmés', value: num(sit.totaux.moins5), sub: `${num(sit.totaux.deces_moins5)} décès · ${num(sit.totaux.gueris_moins5)} guéris ce jour` },
+            { label: 'Cumul confirmés < 5 ans', value: num(sit.totaux.moins5_cumul), sub: sit.totaux.confirmes ? `${pct(sit.totaux.moins5_cumul / sit.totaux.confirmes, 1)} des confirmés` : null },
+            { label: 'Cumul décès < 5 ans', value: num(sit.totaux.deces_moins5_cumul), sub: `létalité ${sit.totaux.letalite_moins5 === null ? 'NA' : pct(sit.totaux.letalite_moins5, 1)}` },
+            { label: 'Cumul guéris < 5 ans', value: num(sit.totaux.gueris_moins5_cumul) },
+            { label: 'Enfants < 5 ans en cours', value: num(sit.totaux.actifs_moins5) },
           ]} />
           <Section title={`Situation par ZS au ${fmtDate(end)}`}>
             <Table>
@@ -91,10 +98,26 @@ export default function Dashboard() {
               </tbody>
               <tfoot><tr><th>Province</th><td className="n">{num(sit.totaux.vivants)}</td><td className="n">{num(sit.totaux.decedes)}</td><td className="n">{num(sit.totaux.ppl)}</td><td className="n">{num(sit.totaux.deces_parmi)}</td><td className="n">{num(sit.totaux.gueris)}</td><td>{sit.totaux.nouvelles_as.length || '–'}</td><td className="n">{num(sit.totaux.as_touchees)}</td><td className="n">{sit.totaux.jours_sans_cas ?? '–'}</td><td className="n">{num(sit.totaux.confirmes)}</td><td className="n">{num(sit.totaux.deces)}</td><td className="n">{num(sit.totaux.gueris_cumul)}</td><td className="n">{num(sit.totaux.ppl_cumul)}</td><td className="n">{num(sit.totaux.actifs)}</td></tr></tfoot>
             </Table>
+            <h3 className="sous-titre">Enfants de moins de 5 ans</h3>
+            <Table>
+              <thead><tr><th>ZS</th><th className="n">Nouveaux conf.</th><th className="n">Décès du jour</th><th className="n">Guéris du jour</th><th className="n">Cumul conf.</th><th className="n">% des conf.</th><th className="n">Cumul décès</th><th className="n">Létalité</th><th className="n">Cumul guéris</th><th className="n">En cours</th></tr></thead>
+              <tbody>
+                {sit.rows.map((x) => (
+                  <tr key={x.zs.id}>
+                    <td><strong>{x.zs.nom}</strong></td>
+                    <td className="n">{x.jour ? num(x.jour.moins5) : '–'}</td><td className="n">{x.jour ? num(x.jour.deces_moins5) : '–'}</td><td className="n">{x.jour ? num(x.jour.gueris_moins5) : '–'}</td>
+                    <td className="n">{num(x.cumuls.moins5)}</td><td className="n">{x.cumuls.confirmes ? pct(x.cumuls.moins5 / x.cumuls.confirmes) : 'NA'}</td>
+                    <td className="n">{num(x.cumuls.deces_moins5)}</td><td className="n">{x.cumuls.letalite_moins5 === null ? 'NA' : pct(x.cumuls.letalite_moins5)}</td>
+                    <td className="n">{num(x.cumuls.gueris_moins5)}</td><td className="n">{num(x.cumuls.actifs_moins5)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr><th>Province</th><td className="n">{num(sit.totaux.moins5)}</td><td className="n">{num(sit.totaux.deces_moins5)}</td><td className="n">{num(sit.totaux.gueris_moins5)}</td><td className="n">{num(sit.totaux.moins5_cumul)}</td><td className="n">{sit.totaux.confirmes ? pct(sit.totaux.moins5_cumul / sit.totaux.confirmes) : 'NA'}</td><td className="n">{num(sit.totaux.deces_moins5_cumul)}</td><td className="n">{sit.totaux.letalite_moins5 === null ? 'NA' : pct(sit.totaux.letalite_moins5)}</td><td className="n">{num(sit.totaux.gueris_moins5_cumul)}</td><td className="n">{num(sit.totaux.actifs_moins5)}</td></tr></tfoot>
+            </Table>
             <p className="muted small">Cumuls = valeurs initiales validées de chaque ZS + événements des fiches soumises. Une correction validée d’une fiche passée se répercute d’elle-même. Les décès probables ou communautaires non confirmés ne sont jamais ajoutés au cumul des décès.</p>
           </Section>
           <Section title={`Nouveaux cas confirmés par jour, ${span === 0 ? `depuis le ${fmtDate(debut)}` : `${span} derniers jours`}`}>
-            <LineChart series={[{ name: 'Nouveaux confirmés', values: sitSeries.map((p) => ({ x: p.d, y: p.t.total })) }, { name: 'Nouveaux guéris', values: sitSeries.map((p) => ({ x: p.d, y: p.t.gueris })) }]} />
+            <LineChart series={[{ name: 'Nouveaux confirmés', values: sitSeries.map((p) => ({ x: p.d, y: p.t.total })) }, { name: 'Nouveaux guéris', values: sitSeries.map((p) => ({ x: p.d, y: p.t.gueris })) }, { name: 'dont moins de 5 ans', values: sitSeries.map((p) => ({ x: p.d, y: p.t.moins5 })) }]} />
           </Section>
           <Section title="Cumuls">
             <LineChart series={[{ name: 'Cumul confirmés', values: sitSeries.map((p) => ({ x: p.d, y: p.t.confirmes })) }, { name: 'Cumul décès', values: sitSeries.map((p) => ({ x: p.d, y: p.t.deces })) }, { name: 'En cours', values: sitSeries.map((p) => ({ x: p.d, y: p.t.actifs })) }]} />

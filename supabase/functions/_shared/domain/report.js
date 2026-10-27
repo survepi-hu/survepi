@@ -39,9 +39,15 @@ export const FIELDS = [
     help: 'Confirmés ce jour et déjà décédés au moment de la confirmation.' },
   { key: 'cas_conf_ppl', label: 'dont Personnel de Première Ligne (PPL)', group: 'epi', required: true,
     help: 'Parmi les nouveaux cas confirmés du jour (vivants + décédés).' },
+  { key: 'cas_conf_moins5', label: 'dont enfants de moins de 5 ans', group: 'epi', required: true,
+    help: 'Parmi les nouveaux cas confirmés du jour (vivants + décédés), enfants de moins de 5 ans.' },
   { key: 'deces_parmi_confirmes', label: 'Nouveaux décès parmi les cas confirmés', group: 'epi', required: true,
     help: 'Cas confirmés vivants les jours précédents, décédés aujourd’hui. Ce ne sont pas de nouveaux cas.' },
+  { key: 'deces_moins5', label: 'dont décès d’enfants de moins de 5 ans', group: 'epi', required: true,
+    help: 'Parmi les décès du jour chez les confirmés (confirmés décédés + décès parmi les confirmés).' },
   { key: 'gueris', label: 'Nouveaux guéris du jour', group: 'epi', required: true },
+  { key: 'gueris_moins5', label: 'dont enfants de moins de 5 ans guéris', group: 'epi', required: true,
+    help: 'Parmi les nouveaux guéris du jour.' },
   { key: 'deces_non_confirmes', label: 'Décès probables / communautaires (non confirmés)', group: 'epi', required: false,
     help: 'Suivis à part : jamais ajoutés au cumul des décès parmi les cas confirmés.' },
   // II. Investigations
@@ -167,6 +173,12 @@ export function validate(r, { prev = null, seuilSuivi = 0.8 } = {}) {
   }
   if (val('cas_conf_ppl') !== null && val('cas_conf_ppl') > c.cas_conf_total)
     E('cas_conf_ppl', `PPL (${val('cas_conf_ppl')}) > nouveaux cas confirmés du jour (${c.cas_conf_total}).`);
+  if (val('cas_conf_moins5') !== null && val('cas_conf_moins5') > c.cas_conf_total)
+    E('cas_conf_moins5', `Moins de 5 ans (${val('cas_conf_moins5')}) > nouveaux cas confirmés du jour (${c.cas_conf_total}).`);
+  if (val('deces_moins5') !== null && val('deces_moins5') > c.deces_confirmes_jour)
+    E('deces_moins5', `Décès de moins de 5 ans (${val('deces_moins5')}) > décès du jour chez les confirmés (${c.deces_confirmes_jour}).`);
+  if (val('gueris_moins5') !== null && val('gueris_moins5') > (val('gueris') ?? 0))
+    E('gueris_moins5', `Guéris de moins de 5 ans (${val('gueris_moins5')}) > nouveaux guéris (${val('gueris') ?? 0}).`);
   if (val('inv_realisees_jour') !== null && val('alertes_validees') !== null && val('inv_realisees_jour') > val('alertes_validees'))
     E('inv_realisees_jour', 'Investigations réalisées du jour (Ij) > alertes validées (A).');
   if (val('inv_realisees_report') !== null && val('inv_report_entrant') !== null && val('inv_realisees_report') > val('inv_report_entrant'))

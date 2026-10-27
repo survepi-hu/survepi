@@ -89,6 +89,7 @@ export function buildDemo(now = new Date()) {
       base_date: z.premier === null || z.premier > -35 ? null : addDays(T, -35),
       base_confirmes: z.premier === null ? 0 : Math.round(z.base * 2.5), base_deces: z.premier === null ? 0 : Math.round(z.base * 0.8),
       base_gueris: z.premier === null ? 0 : Math.round(z.base), base_ppl: z.premier === null ? 0 : Math.floor(z.base / 3), base_deces_non_confirmes: 0,
+      base_moins5: z.premier === null ? 0 : Math.floor(z.base / 2), base_deces_moins5: z.premier === null ? 0 : Math.floor(z.base / 6), base_gueris_moins5: z.premier === null ? 0 : Math.floor(z.base / 5),
     };
   });
   // Aires de santé : une partie déjà touchée avant la démo, d'autres le deviennent au fil des jours
@@ -109,6 +110,7 @@ export function buildDemo(now = new Date()) {
     let burst = z.ct0; // listage initial au 1er jour actif
     const zb = zs.find((x) => x.id === z.id);
     let enCours = zb.base_date ? zb.base_confirmes - zb.base_deces - zb.base_gueris : 0; // guéris et décès bornés par les cas en cours
+    let enCours5 = zb.base_date ? zb.base_moins5 - zb.base_deces_moins5 - zb.base_gueris_moins5 : 0;
     for (let k = 0; k <= 34; k++) {
       const d = addDays(start, k);
       const ago = -k + 34; // 0 = aujourd'hui
@@ -134,6 +136,7 @@ export function buildDemo(now = new Date()) {
           rep.cas_conf_decedes = r() < 0.06 ? 1 : 0;
           if (ago === -z.dernier && rep.cas_conf_vivants + rep.cas_conf_decedes === 0) rep.cas_conf_vivants = 1;
           rep.cas_conf_ppl = rep.cas_conf_vivants + rep.cas_conf_decedes > 0 && r() < 0.15 ? 1 : 0;
+          rep.cas_conf_moins5 = rep.cas_conf_vivants > 0 && r() < 0.2 ? 1 : 0; // un enfant parmi les vivants
           const libres = areas.filter((a) => a.zs_id === z.id && !a.touchee_le && !reports.some((x) => (x.nouvelles_as || []).includes(a.id)));
           const touchees = areas.filter((a) => a.zs_id === z.id).length - libres.length;
           if (rep.cas_conf_vivants + rep.cas_conf_decedes > 0 && libres.length && touchees < z.as_affectees && r() < 0.5) rep.nouvelles_as = [libres[0].id];
@@ -143,6 +146,11 @@ export function buildDemo(now = new Date()) {
         enCours -= rep.deces_parmi_confirmes;
         rep.gueris = Math.min(enCours, r() < 0.2 ? 1 + (r() < 0.3 ? 1 : 0) : 0);
         enCours -= rep.gueris;
+        enCours5 += rep.cas_conf_moins5;
+        rep.deces_moins5 = rep.deces_parmi_confirmes && enCours5 > 0 && r() < 0.3 ? 1 : 0;
+        enCours5 -= rep.deces_moins5;
+        rep.gueris_moins5 = rep.gueris && enCours5 > 0 && r() < 0.25 ? 1 : 0;
+        enCours5 -= rep.gueris_moins5;
         rep.deces_non_confirmes = r() < 0.04 ? 1 : 0;
         let base = z.base * (ago < 12 ? 1.2 : 0.8);
         if (z.id === 'dungu' && ago <= 2) base = 4;

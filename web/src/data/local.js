@@ -4,7 +4,7 @@ import { appareil } from '../appareil.js';
 // pour que la démo se comporte comme la version Supabase.
 import { buildDemo } from './demoSeed.js';
 
-const KEY = 'survepi-demo-v4';
+const KEY = 'survepi-demo-v5';
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 const TABLES = ['zs', 'actors', 'assignments', 'reports', 'notifications', 'investigations', 'contacts', 'followups', 'deferrals', 'audit', 'versions', 'validations'];
 const LOCKED = ['valide_zs', 'valide_prov'];

@@ -389,3 +389,7 @@ ul.plain { margin: 0 0 12px; padding-left: 18px; display: flex; flex-direction: 
 .detection-cell { white-space: nowrap; } .detection-cell .etat { margin: 0 3px 0 0; }
 
 .chart .line.s-3 { stroke: var(--s3); } .chart .pt.s-3 { fill: var(--s3); } .sw-3 { background: var(--s3); }
+.epi-groupe { margin-bottom: 6px; }
+.epi-groupe-titre { display: block; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 6px 0 2px; }
+.calcs-moins5 { margin-top: 8px; background: var(--accent-soft); border-radius: 4px; border-top: 0; padding: 6px 8px 8px; }
+.calcs-moins5 .epi-groupe-titre { flex-basis: 100%; margin: 0 0 4px; color: var(--accent); }
