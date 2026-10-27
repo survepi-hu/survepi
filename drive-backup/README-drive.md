@@ -22,7 +22,7 @@ Les 90 dernières nuits sont gardées (réglable). Les **pièces jointes** des f
    - `SUPABASE_SERVICE_KEY` : Supabase > Settings > API > clé `service_role`
    - `DOSSIER_ID` : l'identifiant copié à l'étape 1
    - `ALERTE_EMAIL` : adresse(s) qui reçoivent le compte rendu, séparées par des virgules
-   - `RETENTION_JOURS` : facultatif, 90 par défaut
+   - `CONSERVER_SAUVEGARDES` : facultatif, nombre de sauvegardes gardées (1 par défaut : chaque nuit, la nouvelle remplace la précédente)
 6. Dans l'éditeur, choisir la fonction `installer` et cliquer « Exécuter ». Accepter les autorisations Google (Drive, Sheets, envoi d'e-mails, accès externe).
 7. Choisir `sauvegardeNocturne` et cliquer « Exécuter » une fois pour faire la première sauvegarde tout de suite. Vérifier le dossier Drive et l'e-mail.
 

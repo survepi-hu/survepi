@@ -7,7 +7,8 @@
  *   2. crée dans le dossier Drive un sous-dossier « SurvEpi AAAA-MM-JJ » contenant
  *      - un Google Sheet lisible (un onglet par table + un onglet Compteurs),
  *      - un fichier survepi-AAAAMMJJ-HHMM.json.gz qui sert à la restauration ;
- *   3. supprime les sauvegardes plus vieilles que RETENTION_JOURS (90 par défaut) ;
+ *   3. une fois la nouvelle sauvegarde complète, supprime définitivement les précédentes : seules les
+ *      CONSERVER_SAUVEGARDES plus récentes sont gardées (1 par défaut : la dernière seulement) ;
  *   4. écrit « dernière sauvegarde » dans l'application et envoie un e-mail de compte rendu.
  *
  * Installation (une seule fois) : voir README-drive.md
@@ -16,7 +17,7 @@
  *   SUPABASE_SERVICE_KEY  clé « service_role » (Settings > API). Ne jamais la mettre ailleurs.
  *   DOSSIER_ID            identifiant du dossier Drive « SurvEpi - Sauvegardes » (fin de l'URL du dossier)
  *   ALERTE_EMAIL          adresse(s) qui reçoivent le compte rendu, séparées par des virgules
- *   RETENTION_JOURS       facultatif, 90 par défaut
+ *   CONSERVER_SAUVEGARDES facultatif, nombre de sauvegardes gardées (1 par défaut)
  *
  * Pièces jointes (photos / scans des fiches) : copiées une seule fois chacune dans le sous-dossier
  * « SurvEpi - Pièces jointes / <ZS> / <date> » du dossier de sauvegarde. Jamais supprimées de Drive
@@ -38,7 +39,7 @@ function cfg_() {
     if (!p[k]) throw new Error('Propriété du script manquante : ' + k);
   });
   p.SUPABASE_URL = p.SUPABASE_URL.replace(/\/+$/, '');
-  p.RETENTION_JOURS = Number(p.RETENTION_JOURS || 90);
+  p.CONSERVER = Math.max(1, Math.floor(Number(p.CONSERVER_SAUVEGARDES || 1)) || 1);
   return p;
 }
 
@@ -179,14 +180,9 @@ function sauvegardeNocturne() {
     // 3. Pièces jointes (nouvelles seulement)
     var pj = copierPiecesJointes_(c, donnees.report_attachments || [], racine, t0);
 
-    // 4. Rétention des sauvegardes de la base (le dossier des pièces jointes n'est jamais touché)
-    var limite = new Date(t0.getTime() - c.RETENTION_JOURS * 86400000), supprimes = 0;
-    var it = racine.getFolders();
-    while (it.hasNext()) {
-      var f = it.next();
-      if (/^SurvEpi ([A-Z0-9-]+ )?\d{4}-\d{2}-\d{2}/.test(f.getName()) && f.getDateCreated() < limite) { f.setTrashed(true); supprimes++; }
-    }
-
+    // 4. Ne garder que la ou les dernières sauvegardes de la base (le dossier des pièces jointes n'est jamais touché).
+    //    On n'arrive ici que si la nouvelle sauvegarde est complète : en cas d'échec plus haut, les anciennes restent.
+    var supprimes = supprimerAnciennes_(racine, dossier, c.CONSERVER);
     var duree = Math.round((new Date() - t0) / 1000);
     noterDansApp_(c, { at: t0.toISOString(), statut: 'ok', compteurs: compteurs, dossier_url: dossier.getUrl(), fichier: fichier.getName(), duree_s: duree,
       pieces_jointes: { copiees: pj.copiees, restantes: pj.restantes, erreurs: pj.erreurs.length } });
@@ -195,13 +191,47 @@ function sauvegardeNocturne() {
       TABLES.map(function (t) { return t[0] + ' : ' + compteurs[t[0]]; }).join('\n') +
       '\n\nPièces jointes copiées cette nuit : ' + pj.copiees + (pj.restantes ? ' (encore ' + pj.restantes + ' à copier : la suite la nuit prochaine, ou lancer rattraperPiecesJointes)' : '') +
       (pj.erreurs.length ? '\nProblèmes :\n' + pj.erreurs.slice(0, 20).join('\n') : '') +
-      '\n\nDossier : ' + dossier.getUrl() + '\nAnciennes sauvegardes supprimées : ' + supprimes);
+      '\n\nDossier : ' + dossier.getUrl() + '\nAnciennes sauvegardes supprimées : ' + supprimes + ' (sauvegardes gardées : ' + c.CONSERVER + ')');
   } catch (e) {
     noterDansApp_(c, { at: t0.toISOString(), statut: 'echec', erreur: String(e.message || e) });
     MailApp.sendEmail(c.ALERTE_EMAIL, 'SurvEpi : ÉCHEC de la sauvegarde du ' + jour,
       'La sauvegarde nocturne a échoué :\n\n' + (e.stack || e) + '\n\nRelancer à la main : ouvrir le projet Apps Script, fonction sauvegardeNocturne, Exécuter.');
     throw e;
   }
+}
+
+/**
+ * Supprime définitivement les dossiers de sauvegarde au-delà des `garder` plus récents (le nouveau compris).
+ * Suppression définitive (service avancé Drive) pour libérer l'espace tout de suite ; sinon corbeille.
+ */
+function supprimerAnciennes_(racine, nouveau, garder) {
+  var dossiers = [], it = racine.getFolders();
+  while (it.hasNext()) {
+    var f = it.next();
+    if (/^SurvEpi ([A-Z0-9-]+ )?\d{4}-\d{2}-\d{2}/.test(f.getName())) dossiers.push(f);
+  }
+  dossiers.sort(function (a, b) {
+    if (a.getId() === nouveau.getId()) return -1;
+    if (b.getId() === nouveau.getId()) return 1;
+    return b.getDateCreated() - a.getDateCreated();
+  });
+  var n = 0;
+  dossiers.slice(garder).forEach(function (f) {
+    try { Drive.Files.remove(f.getId()); } catch (e) { f.setTrashed(true); }
+    n++;
+  });
+  return n;
+}
+
+/** À lancer à la main une fois si besoin : fait le ménage tout de suite en gardant la dernière sauvegarde. */
+function nettoyerSauvegardes() {
+  var c = cfg_(), racine = DriveApp.getFolderById(c.DOSSIER_ID);
+  var dossiers = [], it = racine.getFolders();
+  while (it.hasNext()) { var f = it.next(); if (/^SurvEpi ([A-Z0-9-]+ )?\d{4}-\d{2}-\d{2}/.test(f.getName())) dossiers.push(f); }
+  if (!dossiers.length) { Logger.log('Aucune sauvegarde trouvée.'); return; }
+  dossiers.sort(function (a, b) { return b.getDateCreated() - a.getDateCreated(); });
+  var n = supprimerAnciennes_(racine, dossiers[0], c.CONSERVER);
+  Logger.log('Gardée : ' + dossiers[0].getName() + ' · supprimées : ' + n);
 }
 
 /** À exécuter une fois : vérifie la configuration et crée le déclencheur nocturne. */
