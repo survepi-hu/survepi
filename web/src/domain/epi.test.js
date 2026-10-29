@@ -85,4 +85,16 @@ describe('détection des données', () => {
     expect(avertissementsEpi({ id: 'x', date: '2026-10-03', gueris: 1, gueris_moins5: 1, deces_moins5: 1, deces_parmi_confirmes: 1, cas_conf_vivants: 0, cas_conf_moins5: 0 }, z5, reps)
       .some((w) => w.field === 'gueris_moins5')).toBe(true);
   });
+  it('sous-groupes PPL et élèves : cumuls, contrôles, synthèse provinciale', () => {
+    const zg = { ...zs, base_ppl: 4, base_deces_ppl: 1, base_gueris_ppl: 2, base_eleves: 2, base_deces_eleves: 0, base_gueris_eleves: 1 };
+    const reps = [f('2026-10-01', { cas_conf_vivants: 2, cas_conf_decedes: 0, cas_conf_ppl: 1, cas_conf_eleves: 1, deces_parmi_confirmes: 1, deces_ppl: 1, gueris: 1, gueris_eleves: 1 })];
+    const c = cumulsZs(zg, '2026-10-01', reps);
+    expect(c.groupes.ppl).toMatchObject({ confirmes: 5, deces: 2, gueris: 2, actifs: 1 });
+    expect(c.groupes.eleves).toMatchObject({ confirmes: 3, deces: 0, gueris: 2, actifs: 1 });
+    const v = validate({ cas_conf_vivants: 1, cas_conf_decedes: 0, cas_conf_eleves: 2, deces_parmi_confirmes: 0, deces_ppl: 1, gueris: 0, gueris_ppl: 1 });
+    expect(v.errors.map((e) => e.field).sort()).toEqual(['cas_conf_eleves', 'deces_ppl', 'gueris_ppl']);
+    const p = situationProvince([zg], '2026-10-01', reps, []);
+    expect(p.totaux.groupes.ppl.jour).toEqual({ conf: 1, deces: 1, gueris: 0 });
+    expect(p.totaux.groupes.eleves.part).toBeCloseTo(3 / 12);
+  });
 });

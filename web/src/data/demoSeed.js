@@ -90,6 +90,8 @@ export function buildDemo(now = new Date()) {
       base_confirmes: z.premier === null ? 0 : Math.round(z.base * 2.5), base_deces: z.premier === null ? 0 : Math.round(z.base * 0.8),
       base_gueris: z.premier === null ? 0 : Math.round(z.base), base_ppl: z.premier === null ? 0 : Math.floor(z.base / 3), base_deces_non_confirmes: 0,
       base_moins5: z.premier === null ? 0 : Math.floor(z.base / 2), base_deces_moins5: z.premier === null ? 0 : Math.floor(z.base / 6), base_gueris_moins5: z.premier === null ? 0 : Math.floor(z.base / 5),
+      base_deces_ppl: z.premier === null ? 0 : Math.floor(z.base / 9), base_gueris_ppl: z.premier === null ? 0 : Math.floor(z.base / 6),
+      base_eleves: z.premier === null ? 0 : Math.floor(z.base / 4), base_deces_eleves: 0, base_gueris_eleves: z.premier === null ? 0 : Math.floor(z.base / 8),
     };
   });
   // Aires de santé : une partie déjà touchée avant la démo, d'autres le deviennent au fil des jours
@@ -111,6 +113,8 @@ export function buildDemo(now = new Date()) {
     const zb = zs.find((x) => x.id === z.id);
     let enCours = zb.base_date ? zb.base_confirmes - zb.base_deces - zb.base_gueris : 0; // guéris et décès bornés par les cas en cours
     let enCours5 = zb.base_date ? zb.base_moins5 - zb.base_deces_moins5 - zb.base_gueris_moins5 : 0;
+    let enCoursPpl = zb.base_date ? zb.base_ppl - zb.base_deces_ppl - zb.base_gueris_ppl : 0;
+    let enCoursEl = zb.base_date ? zb.base_eleves - zb.base_deces_eleves - zb.base_gueris_eleves : 0;
     for (let k = 0; k <= 34; k++) {
       const d = addDays(start, k);
       const ago = -k + 34; // 0 = aujourd'hui
@@ -137,6 +141,7 @@ export function buildDemo(now = new Date()) {
           if (ago === -z.dernier && rep.cas_conf_vivants + rep.cas_conf_decedes === 0) rep.cas_conf_vivants = 1;
           rep.cas_conf_ppl = rep.cas_conf_vivants + rep.cas_conf_decedes > 0 && r() < 0.15 ? 1 : 0;
           rep.cas_conf_moins5 = rep.cas_conf_vivants > 0 && r() < 0.2 ? 1 : 0; // un enfant parmi les vivants
+          rep.cas_conf_eleves = rep.cas_conf_vivants > rep.cas_conf_moins5 && r() < 0.15 ? 1 : 0;
           const libres = areas.filter((a) => a.zs_id === z.id && !a.touchee_le && !reports.some((x) => (x.nouvelles_as || []).includes(a.id)));
           const touchees = areas.filter((a) => a.zs_id === z.id).length - libres.length;
           if (rep.cas_conf_vivants + rep.cas_conf_decedes > 0 && libres.length && touchees < z.as_affectees && r() < 0.5) rep.nouvelles_as = [libres[0].id];
@@ -151,6 +156,11 @@ export function buildDemo(now = new Date()) {
         enCours5 -= rep.deces_moins5;
         rep.gueris_moins5 = rep.gueris && enCours5 > 0 && r() < 0.25 ? 1 : 0;
         enCours5 -= rep.gueris_moins5;
+        enCoursPpl += rep.cas_conf_ppl || 0; enCoursEl += rep.cas_conf_eleves || 0;
+        rep.deces_ppl = rep.deces_parmi_confirmes && !rep.deces_moins5 && enCoursPpl > 0 && r() < 0.3 ? 1 : 0; enCoursPpl -= rep.deces_ppl;
+        rep.gueris_ppl = rep.gueris > rep.gueris_moins5 && enCoursPpl > 0 && r() < 0.3 ? 1 : 0; enCoursPpl -= rep.gueris_ppl;
+        rep.deces_eleves = 0;
+        rep.gueris_eleves = rep.gueris > rep.gueris_moins5 + rep.gueris_ppl && enCoursEl > 0 && r() < 0.3 ? 1 : 0; enCoursEl -= rep.gueris_eleves;
         rep.deces_non_confirmes = r() < 0.04 ? 1 : 0;
         let base = z.base * (ago < 12 ? 1.2 : 0.8);
         if (z.id === 'dungu' && ago <= 2) base = 4;
@@ -198,7 +208,7 @@ export function buildDemo(now = new Date()) {
       if (r() < 0.12) sub = hhmmToMin('16:35') + Math.floor(r() * 80);
       if (ago === 0) sub = { isiro: hhmmToMin('11:40'), gombari: hhmmToMin('11:55'), faradje: hhmmToMin('11:20') }[z.id] ?? null;
       if (ago === 0 && z.id === 'boma-mangbetu') { // brouillon commencé, pas soumis
-        rep.statut = 'brouillon'; rep.ct_vus = null; rep.reco_actifs = null; rep.gueris = null; rep.cas_conf_ppl = null; rep.motifs_suivi = []; rep.started_at = ts(d, hhmmToMin('10:50'));
+        rep.statut = 'brouillon'; rep.ct_vus = null; rep.reco_actifs = null; rep.gueris = null; rep.gueris_ppl = null; rep.gueris_moins5 = null; rep.gueris_eleves = null; rep.cas_conf_ppl = null; rep.motifs_suivi = []; rep.started_at = ts(d, hhmmToMin('10:50'));
       } else {
         rep.submitted_at = ts(d, sub);
         rep.started_at = ts(d, sub - 25);

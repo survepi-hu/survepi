@@ -2,10 +2,11 @@
 // Principe (retour du sous-pilier, 22/10/2026) : la fiche ne contient que les ÉVÉNEMENTS du jour. Les cumuls sont
 // recalculés à chaque fois = valeurs initiales de la ZS + somme des événements des fiches retenues. Une correction
 // validée d'une fiche passée se répercute donc d'elle-même, sans jamais additionner des cumuls entre eux.
-import { NUM_KEYS, compute, isSubmitted, FIELD_BY_KEY } from './report.js';
+import { NUM_KEYS, compute, isSubmitted, FIELD_BY_KEY, SOUS_GROUPES } from './report.js';
+export { SOUS_GROUPES };
 import { diffDays } from './time.js';
 
-export const EPI_KEYS = ['cas_conf_vivants', 'cas_conf_decedes', 'cas_conf_ppl', 'cas_conf_moins5', 'deces_parmi_confirmes', 'deces_moins5', 'gueris', 'gueris_moins5', 'deces_non_confirmes'];
+export const EPI_KEYS = ['cas_conf_vivants', 'cas_conf_decedes', 'deces_parmi_confirmes', 'gueris', 'deces_non_confirmes', ...SOUS_GROUPES.flatMap((g) => [g.conf, g.deces, g.gueris])];
 const z = (v) => (v === null || v === undefined || v === '' ? 0 : Number(v) || 0);
 const retenue = (r) => isSubmitted(r);
 
@@ -25,8 +26,13 @@ export function cumulsZs(zs, date, reports) {
   const moins5 = z(zs.base_moins5) + somme('cas_conf_moins5');
   const deces_moins5 = z(zs.base_deces_moins5) + somme('deces_moins5');
   const gueris_moins5 = z(zs.base_gueris_moins5) + somme('gueris_moins5');
+  // Tous les sous-groupes, même calcul : valeurs initiales + événements
+  const groupes = Object.fromEntries(SOUS_GROUPES.map((g) => {
+    const c = z(zs[g.base]) + somme(g.conf), d = z(zs[g.base_deces]) + somme(g.deces), gu = z(zs[g.base_gueris]) + somme(g.gueris);
+    return [g.id, { confirmes: c, deces: d, gueris: gu, actifs: c - d - gu, letalite: c > 0 ? d / c : null }];
+  }));
   return {
-    confirmes, deces, gueris,
+    confirmes, deces, gueris, groupes,
     moins5, deces_moins5, gueris_moins5,
     actifs_moins5: moins5 - deces_moins5 - gueris_moins5,
     letalite_moins5: moins5 > 0 ? deces_moins5 / moins5 : null,
@@ -102,7 +108,8 @@ export function situationZs(zs, date, reports, areas) {
     zs, report: r,
     jour: r ? { vivants: r.cas_conf_vivants, decedes: r.cas_conf_decedes, total: r.cas_conf_vivants === null && r.cas_conf_decedes === null ? null : compute(r).cas_conf_total,
       ppl: r.cas_conf_ppl, moins5: r.cas_conf_moins5, deces_parmi: r.deces_parmi_confirmes, deces_moins5: r.deces_moins5,
-      gueris: r.gueris, gueris_moins5: r.gueris_moins5, deces_nc: r.deces_non_confirmes } : null,
+      gueris: r.gueris, gueris_moins5: r.gueris_moins5, deces_nc: r.deces_non_confirmes,
+      groupes: Object.fromEntries(SOUS_GROUPES.map((g) => [g.id, { conf: r[g.conf], deces: r[g.deces], gueris: r[g.gueris] }])) } : null,
     nouvelles_as: nouvelles,
     as_touchees: touchees.size,
     as_total: areas.filter((a) => a.zs_id === zs.id && a.actif !== false).length || zs.as_total || null,
@@ -132,6 +139,14 @@ export function situationProvince(zsList, date, reports, areas) {
       actifs_moins5: s((x) => x.cumuls.actifs_moins5),
       letalite_moins5: s((x) => x.cumuls.moins5) > 0 ? s((x) => x.cumuls.deces_moins5) / s((x) => x.cumuls.moins5) : null,
       fiches: rows.filter((x) => x.report).length,
+      groupes: Object.fromEntries(SOUS_GROUPES.map((g) => {
+        const c = s((x) => x.cumuls.groupes[g.id].confirmes), d = s((x) => x.cumuls.groupes[g.id].deces);
+        return [g.id, {
+          jour: { conf: s((x) => x.jour?.groupes[g.id].conf), deces: s((x) => x.jour?.groupes[g.id].deces), gueris: s((x) => x.jour?.groupes[g.id].gueris) },
+          confirmes: c, deces: d, gueris: s((x) => x.cumuls.groupes[g.id].gueris), actifs: s((x) => x.cumuls.groupes[g.id].actifs),
+          part: confirmes > 0 ? c / confirmes : null, letalite: c > 0 ? d / c : null,
+        }];
+      })),
     },
   };
 }
@@ -143,10 +158,12 @@ export function avertissementsEpi(form, zs, reports) {
   const sorties = z(form.deces_parmi_confirmes) + z(form.gueris);
   if (sorties > Math.max(0, veille.actifs) + z(form.cas_conf_vivants))
     out.push({ field: 'gueris', msg: `Guéris + décès parmi les confirmés (${sorties}) dépassent les cas confirmés en cours (${Math.max(0, veille.actifs) + z(form.cas_conf_vivants)}). Vérifier les valeurs initiales de la ZS.` });
-  // Moins de 5 ans : décès + guéris du jour ne peuvent pas dépasser les enfants en cours la veille + les nouveaux du jour
-  const sorties5 = z(form.deces_moins5) + z(form.gueris_moins5), dispo5 = Math.max(0, veille.actifs_moins5) + z(form.cas_conf_moins5);
-  if (sorties5 > dispo5)
-    out.push({ field: 'gueris_moins5', msg: `Décès + guéris de moins de 5 ans (${sorties5}) dépassent les enfants confirmés en cours (${dispo5}). Vérifier les valeurs initiales de la ZS.` });
+  // Sous-groupes : décès + guéris du jour ≤ en cours la veille + nouveaux du jour
+  for (const g of SOUS_GROUPES) {
+    const v = veille.groupes[g.id], sorties = z(form[g.deces]) + z(form[g.gueris]), dispo = Math.max(0, v.actifs) + z(form[g.conf]);
+    if (sorties > dispo)
+      out.push({ field: g.gueris, msg: `Décès + guéris ${g.court} (${sorties}) dépassent les ${g.court} confirmés en cours (${dispo}). Vérifier les valeurs initiales de la ZS.` });
+  }
   return out;
 }
 const prevDay = (d) => { const x = new Date(d + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() - 1); return x.toISOString().slice(0, 10); };

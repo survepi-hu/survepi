@@ -1,6 +1,18 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
-import { asTouchees, cumulsZs } from '../domain/epi.js';
+import { asTouchees, cumulsZs, SOUS_GROUPES } from '../domain/epi.js';
+
+/** Valeur actuellement calculée par l'app pour un champ de valeur initiale. */
+function valeurApp(cu, k) {
+  const direct = { base_confirmes: cu.confirmes, base_deces: cu.deces, base_gueris: cu.gueris, base_deces_non_confirmes: cu.deces_non_confirmes };
+  if (k in direct) return direct[k];
+  for (const g of SOUS_GROUPES) {
+    if (k === g.base) return cu.groupes[g.id].confirmes;
+    if (k === g.base_deces) return cu.groupes[g.id].deces;
+    if (k === g.base_gueris) return cu.groupes[g.id].gueris;
+  }
+  return null;
+}
 import { fmtDate } from '../domain/time.js';
 import { Section, Table, Pill, Modal, Field, num, pct } from '../ui.jsx';
 
@@ -109,9 +121,14 @@ const BASE = [
   ['base_deces', 'Cumul décès parmi les confirmés'],
   ['base_gueris', 'Cumul guéris'],
   ['base_ppl', 'Cumul PPL confirmés'],
+  ['base_deces_ppl', 'Cumul décès de PPL'],
+  ['base_gueris_ppl', 'Cumul PPL guéris'],
   ['base_moins5', 'Cumul confirmés de moins de 5 ans'],
   ['base_deces_moins5', 'Cumul décès de moins de 5 ans'],
   ['base_gueris_moins5', 'Cumul guéris de moins de 5 ans'],
+  ['base_eleves', 'Cumul élèves confirmés'],
+  ['base_deces_eleves', 'Cumul décès d’élèves'],
+  ['base_gueris_eleves', 'Cumul élèves guéris'],
   ['base_deces_non_confirmes', 'Décès probables / communautaires (à part)'],
 ];
 
@@ -127,9 +144,8 @@ export function ValeursInitiales({ zs, onClose }) {
   const n = (v) => (v === '' || v === null ? null : Math.max(0, Math.round(Number(v)) || 0));
   const ok = !f.base_date || (f.base_valide_par.trim() && f.base_valide_le);
   const incoherent = f.base_date && n(f.base_deces) + n(f.base_gueris) > n(f.base_confirmes);
-  const pplTrop = f.base_date && n(f.base_ppl) > n(f.base_confirmes);
-  const m5Trop = f.base_date && (n(f.base_moins5) > n(f.base_confirmes) || n(f.base_deces_moins5) > n(f.base_deces) || n(f.base_gueris_moins5) > n(f.base_gueris)
-    || n(f.base_deces_moins5) + n(f.base_gueris_moins5) > n(f.base_moins5));
+  const m5Trop = f.base_date && SOUS_GROUPES.some((g) => n(f[g.base]) > n(f.base_confirmes) || n(f[g.base_deces]) > n(f.base_deces) || n(f[g.base_gueris]) > n(f.base_gueris)
+    || n(f[g.base_deces]) + n(f[g.base_gueris]) > n(f[g.base]));
 
   const save = async () => {
     const patch = f.base_date
@@ -147,7 +163,7 @@ export function ValeursInitiales({ zs, onClose }) {
         {BASE.map(([k, l]) => (
           <Field key={k} label={l}>
             <input id={`vi-${k}`} type="number" min="0" inputMode="numeric" disabled={!f.base_date} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} />
-            {fiches && <small className="blk muted">actuellement dans l’app : {num({ base_confirmes: fiches.confirmes, base_deces: fiches.deces, base_gueris: fiches.gueris, base_ppl: fiches.ppl, base_moins5: fiches.moins5, base_deces_moins5: fiches.deces_moins5, base_gueris_moins5: fiches.gueris_moins5, base_deces_non_confirmes: fiches.deces_non_confirmes }[k])}</small>}
+            {fiches && <small className="blk muted">actuellement dans l’app : {num(valeurApp(fiches, k))}</small>}
           </Field>
         ))}
         <Field label="Validé par (équipe data)"><input id="vi-par" disabled={!f.base_date} value={f.base_valide_par} onChange={(e) => setF({ ...f, base_valide_par: e.target.value })} /></Field>
@@ -155,13 +171,12 @@ export function ValeursInitiales({ zs, onClose }) {
       </div>
       {f.base_date && avantRef > 0 && <p className="note tone-warn">{avantRef} fiche(s) de {zs.nom} datée(s) jusqu’au {fmtDate(f.base_date)} ne seront plus additionnées aux cumuls (elles restent visibles et comptent toujours pour la complétude, les investigations et le suivi).</p>}
       {incoherent && <p className="field-error">Décès + guéris dépassent les cas confirmés.</p>}
-      {pplTrop && <p className="field-error">PPL confirmés supérieurs aux cas confirmés.</p>}
-      {m5Trop && <p className="field-error">Moins de 5 ans incohérents : chaque cumul des moins de 5 ans doit rester inférieur au cumul total correspondant, et leurs décès + guéris ne peuvent pas dépasser leurs confirmés.</p>}
+      {m5Trop && <p className="field-error">Sous-groupes incohérents (PPL, moins de 5 ans ou élèves) : chaque cumul doit rester inférieur au cumul total correspondant, et décès + guéris du sous-groupe ne peuvent pas dépasser ses confirmés.</p>}
       {f.base_date && n(f.base_confirmes) > 0 && <p className="muted small">Létalité initiale : {pct(n(f.base_deces) / n(f.base_confirmes), 1)}</p>}
       <p className="muted small">Pour les AS touchées avant cette date : onglet « Aires de santé », champ « Touchée le ».</p>
       <div className="actions">
         <button className="btn ghost" onClick={onClose}>Annuler</button>
-        <button className="btn primary" disabled={!ok || incoherent || pplTrop || m5Trop} onClick={save}>{f.base_date ? 'Enregistrer' : 'Enregistrer sans valeurs initiales'}</button>
+        <button className="btn primary" disabled={!ok || incoherent || m5Trop} onClick={save}>{f.base_date ? 'Enregistrer' : 'Enregistrer sans valeurs initiales'}</button>
       </div>
     </Modal>
   );

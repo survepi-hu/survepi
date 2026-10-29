@@ -6,13 +6,14 @@ import { addDays, dateRange, fmtTime, fmtDate } from '../domain/time.js';
 import { tauxSortieJ21, anciennete } from '../domain/registry.js';
 import { Band, Bars, LineChart, Section, Table, Tabs, Pill, pct, num, toneOfRate } from '../ui.jsx';
 import { useDay, CELL_TONE, CatPill } from './common.jsx';
-import { situationProvince, rapportPrecedent, nouveautes, detection, ETATS } from '../domain/epi.js';
+import { situationProvince, rapportPrecedent, nouveautes, detection, ETATS, SOUS_GROUPES } from '../domain/epi.js';
 import { FIELD_BY_KEY } from '../domain/report.js';
 
 export default function Dashboard() {
   const s = useStore();
   const [tab, setTab] = useState('epi');
   const [span, setSpan] = useState(21);
+  const [sg, setSg] = useState('moins5');
   const end = s.date;
   // « Depuis le début » : à partir de la plus ancienne fiche (historique importé compris)
   const debut = useMemo(() => s.data.reports.reduce((m, r) => (r.date < m ? r.date : m), end), [s.data.reports, end]);
@@ -57,8 +58,8 @@ export default function Dashboard() {
       {tab === 'epi' && (
         <>
           <Band items={[
-            { label: 'Nouveaux cas confirmés', value: num(sit.totaux.total), sub: `${num(sit.totaux.vivants)} vivants · ${num(sit.totaux.decedes)} décédés · ${num(sit.totaux.moins5)} < 5 ans`, tone: sit.totaux.total ? 'bad' : null },
-            { label: 'dont PPL', value: num(sit.totaux.ppl) },
+            { label: 'Nouveaux cas confirmés', value: num(sit.totaux.total), sub: `${num(sit.totaux.vivants)} vivants · ${num(sit.totaux.decedes)} décédés`, tone: sit.totaux.total ? 'bad' : null },
+            { label: 'dont PPL · < 5 ans · élèves', value: SOUS_GROUPES.map((g) => num(sit.totaux.groupes[g.id].jour.conf)).join(' · ') },
             { label: 'Nouvelles AS touchées', value: num(sit.totaux.nouvelles_as.length), sub: sit.totaux.nouvelles_as.join(', ') || null, tone: sit.totaux.nouvelles_as.length ? 'warn' : null },
             { label: 'AS touchées (cumul)', value: num(sit.totaux.as_touchees) },
             { label: 'Jours sans nouveau cas confirmé', value: sit.totaux.jours_sans_cas === null ? '–' : num(sit.totaux.jours_sans_cas), sub: 'plus petit écart, toutes ZS' },
@@ -69,16 +70,8 @@ export default function Dashboard() {
             { label: 'Cumul cas confirmés', value: num(sit.totaux.confirmes) },
             { label: 'Cumul décès (confirmés)', value: num(sit.totaux.deces), sub: `létalité ${sit.totaux.letalite === null ? 'NA' : pct(sit.totaux.letalite, 1)}` },
             { label: 'Cumul guéris', value: num(sit.totaux.gueris_cumul) },
-            { label: 'Cumul PPL confirmés', value: num(sit.totaux.ppl_cumul) },
             { label: 'Cas confirmés en cours', value: num(sit.totaux.actifs) },
             { label: 'Décès probables / communautaires (cumul, à part)', value: num(sit.totaux.deces_nc_cumul) },
-          ]} />
-          <Band items={[
-            { label: 'Moins de 5 ans : nouveaux confirmés', value: num(sit.totaux.moins5), sub: `${num(sit.totaux.deces_moins5)} décès · ${num(sit.totaux.gueris_moins5)} guéris ce jour` },
-            { label: 'Cumul confirmés < 5 ans', value: num(sit.totaux.moins5_cumul), sub: sit.totaux.confirmes ? `${pct(sit.totaux.moins5_cumul / sit.totaux.confirmes, 1)} des confirmés` : null },
-            { label: 'Cumul décès < 5 ans', value: num(sit.totaux.deces_moins5_cumul), sub: `létalité ${sit.totaux.letalite_moins5 === null ? 'NA' : pct(sit.totaux.letalite_moins5, 1)}` },
-            { label: 'Cumul guéris < 5 ans', value: num(sit.totaux.gueris_moins5_cumul) },
-            { label: 'Enfants < 5 ans en cours', value: num(sit.totaux.actifs_moins5) },
           ]} />
           <Section title={`Situation par ZS au ${fmtDate(end)}`}>
             <Table>
@@ -98,26 +91,49 @@ export default function Dashboard() {
               </tbody>
               <tfoot><tr><th>Province</th><td className="n">{num(sit.totaux.vivants)}</td><td className="n">{num(sit.totaux.decedes)}</td><td className="n">{num(sit.totaux.ppl)}</td><td className="n">{num(sit.totaux.deces_parmi)}</td><td className="n">{num(sit.totaux.gueris)}</td><td>{sit.totaux.nouvelles_as.length || '–'}</td><td className="n">{num(sit.totaux.as_touchees)}</td><td className="n">{sit.totaux.jours_sans_cas ?? '–'}</td><td className="n">{num(sit.totaux.confirmes)}</td><td className="n">{num(sit.totaux.deces)}</td><td className="n">{num(sit.totaux.gueris_cumul)}</td><td className="n">{num(sit.totaux.ppl_cumul)}</td><td className="n">{num(sit.totaux.actifs)}</td></tr></tfoot>
             </Table>
-            <h3 className="sous-titre">Enfants de moins de 5 ans</h3>
-            <Table>
-              <thead><tr><th>ZS</th><th className="n">Nouveaux conf.</th><th className="n">Décès du jour</th><th className="n">Guéris du jour</th><th className="n">Cumul conf.</th><th className="n">% des conf.</th><th className="n">Cumul décès</th><th className="n">Létalité</th><th className="n">Cumul guéris</th><th className="n">En cours</th></tr></thead>
-              <tbody>
-                {sit.rows.map((x) => (
-                  <tr key={x.zs.id}>
-                    <td><strong>{x.zs.nom}</strong></td>
-                    <td className="n">{x.jour ? num(x.jour.moins5) : '–'}</td><td className="n">{x.jour ? num(x.jour.deces_moins5) : '–'}</td><td className="n">{x.jour ? num(x.jour.gueris_moins5) : '–'}</td>
-                    <td className="n">{num(x.cumuls.moins5)}</td><td className="n">{x.cumuls.confirmes ? pct(x.cumuls.moins5 / x.cumuls.confirmes) : 'NA'}</td>
-                    <td className="n">{num(x.cumuls.deces_moins5)}</td><td className="n">{x.cumuls.letalite_moins5 === null ? 'NA' : pct(x.cumuls.letalite_moins5)}</td>
-                    <td className="n">{num(x.cumuls.gueris_moins5)}</td><td className="n">{num(x.cumuls.actifs_moins5)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot><tr><th>Province</th><td className="n">{num(sit.totaux.moins5)}</td><td className="n">{num(sit.totaux.deces_moins5)}</td><td className="n">{num(sit.totaux.gueris_moins5)}</td><td className="n">{num(sit.totaux.moins5_cumul)}</td><td className="n">{sit.totaux.confirmes ? pct(sit.totaux.moins5_cumul / sit.totaux.confirmes) : 'NA'}</td><td className="n">{num(sit.totaux.deces_moins5_cumul)}</td><td className="n">{sit.totaux.letalite_moins5 === null ? 'NA' : pct(sit.totaux.letalite_moins5)}</td><td className="n">{num(sit.totaux.gueris_moins5_cumul)}</td><td className="n">{num(sit.totaux.actifs_moins5)}</td></tr></tfoot>
-            </Table>
             <p className="muted small">Cumuls = valeurs initiales validées de chaque ZS + événements des fiches soumises. Une correction validée d’une fiche passée se répercute d’elle-même. Les décès probables ou communautaires non confirmés ne sont jamais ajoutés au cumul des décès.</p>
           </Section>
+          <Section title="Sous-groupes parmi les confirmés" aside={<span className="muted small">Peuvent se recouper : jamais additionnés au total des confirmés</span>}>
+            <Table>
+              <thead><tr><th>Province</th><th className="n">Nouveaux du jour</th><th className="n">Décès du jour</th><th className="n">Guéris du jour</th><th className="n">Cumul confirmés</th><th className="n">% des confirmés</th><th className="n">Cumul décès</th><th className="n">Létalité</th><th className="n">Cumul guéris</th><th className="n">En cours</th></tr></thead>
+              <tbody>
+                {SOUS_GROUPES.map((g) => {
+                  const x = sit.totaux.groupes[g.id];
+                  return (
+                    <tr key={g.id}>
+                      <th>{g.label}</th>
+                      <td className={`n ${x.jour.conf ? 'tone-bad' : ''}`}>{num(x.jour.conf)}</td><td className="n">{num(x.jour.deces)}</td><td className="n">{num(x.jour.gueris)}</td>
+                      <td className="n">{num(x.confirmes)}</td><td className="n">{x.part === null ? 'NA' : pct(x.part)}</td>
+                      <td className="n">{num(x.deces)}</td><td className="n">{x.letalite === null ? 'NA' : pct(x.letalite)}</td>
+                      <td className="n">{num(x.gueris)}</td><td className="n">{num(x.actifs)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+            <div className="row sous-groupe-choix">
+              <Tabs value={sg} onChange={setSg} tabs={SOUS_GROUPES.map((g) => [g.id, `${g.court} par ZS`])} />
+            </div>
+            <Table>
+              <thead><tr><th>ZS</th><th className="n">Nouveaux du jour</th><th className="n">Décès du jour</th><th className="n">Guéris du jour</th><th className="n">Cumul confirmés</th><th className="n">% des confirmés</th><th className="n">Cumul décès</th><th className="n">Létalité</th><th className="n">Cumul guéris</th><th className="n">En cours</th></tr></thead>
+              <tbody>
+                {sit.rows.map((r) => {
+                  const g = SOUS_GROUPES.find((x) => x.id === sg), x = r.cumuls.groupes[sg], j = r.jour?.groupes[sg];
+                  return (
+                    <tr key={r.zs.id}>
+                      <td><strong>{r.zs.nom}</strong></td>
+                      <td className="n">{j ? num(j.conf) : '–'}</td><td className="n">{j ? num(j.deces) : '–'}</td><td className="n">{j ? num(j.gueris) : '–'}</td>
+                      <td className="n">{num(x.confirmes)}</td><td className="n">{r.cumuls.confirmes ? pct(x.confirmes / r.cumuls.confirmes) : 'NA'}</td>
+                      <td className="n">{num(x.deces)}</td><td className="n">{x.letalite === null ? 'NA' : pct(x.letalite)}</td>
+                      <td className="n">{num(x.gueris)}</td><td className="n" title={g.label}>{num(x.actifs)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          </Section>
           <Section title={`Nouveaux cas confirmés par jour, ${span === 0 ? `depuis le ${fmtDate(debut)}` : `${span} derniers jours`}`}>
-            <LineChart series={[{ name: 'Nouveaux confirmés', values: sitSeries.map((p) => ({ x: p.d, y: p.t.total })) }, { name: 'Nouveaux guéris', values: sitSeries.map((p) => ({ x: p.d, y: p.t.gueris })) }, { name: 'dont moins de 5 ans', values: sitSeries.map((p) => ({ x: p.d, y: p.t.moins5 })) }]} />
+            <LineChart series={[{ name: 'Nouveaux confirmés', values: sitSeries.map((p) => ({ x: p.d, y: p.t.total })) }, { name: 'Nouveaux guéris', values: sitSeries.map((p) => ({ x: p.d, y: p.t.gueris })) }, { name: 'dont moins de 5 ans', values: sitSeries.map((p) => ({ x: p.d, y: p.t.groupes.moins5.jour.conf })) }]} />
           </Section>
           <Section title="Cumuls">
             <LineChart series={[{ name: 'Cumul confirmés', values: sitSeries.map((p) => ({ x: p.d, y: p.t.confirmes })) }, { name: 'Cumul décès', values: sitSeries.map((p) => ({ x: p.d, y: p.t.deces })) }, { name: 'En cours', values: sitSeries.map((p) => ({ x: p.d, y: p.t.actifs })) }]} />

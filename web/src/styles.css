@@ -393,3 +393,7 @@ ul.plain { margin: 0 0 12px; padding-left: 18px; display: flex; flex-direction: 
 .epi-groupe-titre { display: block; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 6px 0 2px; }
 .calcs-moins5 { margin-top: 8px; background: var(--accent-soft); border-radius: 4px; border-top: 0; padding: 6px 8px 8px; }
 .calcs-moins5 .epi-groupe-titre { flex-basis: 100%; margin: 0 0 4px; color: var(--accent); }
+.sous-groupes { margin-top: 10px; overflow-x: auto; }
+.sous-groupes table { width: 100%; }
+.sous-groupes th { text-align: left; font-weight: 600; }
+.sous-groupe-choix { margin: 14px 0 4px; }

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
 import { FIELD_BY_KEY, MOTIFS_INVESTIGATION, MOTIFS_SUIVI, SORTIES, applyZeroReport, can, canValidate, carryOver, completeness, compute, emptyReport, isLocked, statusOnSubmit, validate } from '../domain/report.js';
 import { cellState, zsCategory, isExpected } from '../domain/indicators.js';
-import { ETATS, detection, rapportPrecedent, cumulsZs, joursSansNouveauCas, asTouchees, asProposables, avertissementsEpi } from '../domain/epi.js';
+import { ETATS, SOUS_GROUPES, detection, rapportPrecedent, cumulsZs, joursSansNouveauCas, asTouchees, asProposables, avertissementsEpi } from '../domain/epi.js';
 import { addDays, dateRange, fmtDate, fmtTime } from '../domain/time.js';
 import { Pill, Section, pct, num, Empty, Dot } from '../ui.jsx';
 import { CELL_TONE, CatPill, StatutPill, actorName } from './common.jsx';
@@ -197,8 +197,9 @@ export default function Reporting() {
         <h2 className="rubrique">I. Situation épidémiologique</h2>
         <fieldset className="blk">
           <legend>Événements du jour</legend>
-          {[['Nouveaux cas confirmés', ['cas_conf_vivants', 'cas_conf_decedes', 'cas_conf_ppl', 'cas_conf_moins5']],
-            ['Décès et guérisons parmi les confirmés', ['deces_parmi_confirmes', 'deces_moins5', 'gueris', 'gueris_moins5']],
+          {[['Nouveaux cas confirmés', ['cas_conf_vivants', 'cas_conf_decedes', ...SOUS_GROUPES.map((g) => g.conf)]],
+            ['Décès du jour parmi les confirmés', ['deces_parmi_confirmes', ...SOUS_GROUPES.map((g) => g.deces)]],
+            ['Guérisons du jour', ['gueris', ...SOUS_GROUPES.map((g) => g.gueris)]],
             ['Suivi à part', ['deces_non_confirmes']]].map(([titre, keys]) => (
             <div key={titre} className="epi-groupe">
               <span className="epi-groupe-titre">{titre}</span>
@@ -222,17 +223,26 @@ export default function Reporting() {
             <Calc label="Cumul décès (confirmés)" value={num(cu.deces)} />
             <Calc label="Létalité" value={pct(cu.letalite, 1)} />
             <Calc label="Cumul guéris" value={num(cu.gueris)} />
-            <Calc label="Cumul PPL confirmés" value={num(cu.ppl)} />
             <Calc label="Cas confirmés en cours" value={num(cu.actifs)} />
           </div>
-          <div className="calcs calcs-moins5">
-            <span className="epi-groupe-titre">Enfants de moins de 5 ans</span>
-            <Calc label="Nouveaux confirmés du jour" value={num(form.cas_conf_moins5)} tone={Number(form.cas_conf_moins5) ? 'bad' : null} />
-            <Calc label="Cumul confirmés" value={num(cu.moins5)} />
-            <Calc label="Cumul décès" value={num(cu.deces_moins5)} />
-            <Calc label="Létalité" value={pct(cu.letalite_moins5, 1)} />
-            <Calc label="Cumul guéris" value={num(cu.gueris_moins5)} />
-            <Calc label="En cours" value={num(cu.actifs_moins5)} />
+          <div className="sous-groupes">
+            <span className="epi-groupe-titre">Sous-groupes parmi les confirmés (peuvent se recouper)</span>
+            <table className="tbl compact">
+              <thead><tr><th></th><th className="n">Nouveaux du jour</th><th className="n">Cumul confirmés</th><th className="n">Cumul décès</th><th className="n">Létalité</th><th className="n">Cumul guéris</th><th className="n">En cours</th></tr></thead>
+              <tbody>
+                {SOUS_GROUPES.map((g) => {
+                  const x = cu.groupes[g.id];
+                  return (
+                    <tr key={g.id}>
+                      <th>{g.label}</th>
+                      <td className={`n ${Number(form[g.conf]) ? 'tone-bad' : ''}`}>{num(form[g.conf])}</td>
+                      <td className="n">{num(x.confirmes)}</td><td className="n">{num(x.deces)}</td><td className="n">{pct(x.letalite, 1)}</td>
+                      <td className="n">{num(x.gueris)}</td><td className="n">{num(x.actifs)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
           <p className="muted small">Cumuls recalculés = valeurs initiales de la ZS{zsRef.base_date ? ` au ${fmtDate(zsRef.base_date)}` : ''} + événements des fiches soumises, y compris celle-ci. Jamais recopiés d’un jour à l’autre.</p>
           {avertEpi.map((w) => <p key={w.msg} className="note tone-warn">{w.msg}</p>)}

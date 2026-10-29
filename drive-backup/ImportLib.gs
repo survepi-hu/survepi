@@ -34,6 +34,41 @@ var SurvEpiImport = (() => {
     ["ct_sortie_decedes", "Décédés"],
     ["ct_sortie_doublons", "Doublons retirés"]
   ];
+  var SOUS_GROUPES = [
+    {
+      id: "ppl",
+      label: "Personnel de Première Ligne (PPL)",
+      court: "PPL",
+      conf: "cas_conf_ppl",
+      deces: "deces_ppl",
+      gueris: "gueris_ppl",
+      base: "base_ppl",
+      base_deces: "base_deces_ppl",
+      base_gueris: "base_gueris_ppl"
+    },
+    {
+      id: "moins5",
+      label: "Enfants de moins de 5 ans",
+      court: "< 5 ans",
+      conf: "cas_conf_moins5",
+      deces: "deces_moins5",
+      gueris: "gueris_moins5",
+      base: "base_moins5",
+      base_deces: "base_deces_moins5",
+      base_gueris: "base_gueris_moins5"
+    },
+    {
+      id: "eleves",
+      label: "Élèves",
+      court: "Élèves",
+      conf: "cas_conf_eleves",
+      deces: "deces_eleves",
+      gueris: "gueris_eleves",
+      base: "base_eleves",
+      base_deces: "base_deces_eleves",
+      base_gueris: "base_gueris_eleves"
+    }
+  ];
   var FIELDS = [
     // I. Situation épidémiologique : événements du jour seulement (les cumuls sont calculés, jamais saisis)
     { key: "cas_conf_vivants", label: "Nouveaux cas confirmés vivants", group: "epi", required: true },
@@ -46,17 +81,24 @@ var SurvEpiImport = (() => {
     },
     {
       key: "cas_conf_ppl",
-      label: "dont Personnel de Première Ligne (PPL)",
+      label: "dont PPL",
       group: "epi",
       required: true,
-      help: "Parmi les nouveaux cas confirmés du jour (vivants + décédés)."
+      help: "Personnel de Première Ligne, parmi les nouveaux cas confirmés du jour (vivants + décédés)."
     },
     {
       key: "cas_conf_moins5",
-      label: "dont enfants de moins de 5 ans",
+      label: "dont enfants < 5 ans",
       group: "epi",
       required: true,
       help: "Parmi les nouveaux cas confirmés du jour (vivants + décédés), enfants de moins de 5 ans."
+    },
+    {
+      key: "cas_conf_eleves",
+      label: "dont élèves",
+      group: "epi",
+      required: true,
+      help: "Parmi les nouveaux cas confirmés du jour (vivants + décédés), élèves selon la définition retenue par la coordination."
     },
     {
       key: "deces_parmi_confirmes",
@@ -66,20 +108,30 @@ var SurvEpiImport = (() => {
       help: "Cas confirmés vivants les jours précédents, décédés aujourd’hui. Ce ne sont pas de nouveaux cas."
     },
     {
+      key: "deces_ppl",
+      label: "dont décès de PPL",
+      group: "epi",
+      required: true,
+      help: "Parmi les décès du jour chez les confirmés (confirmés décédés + décès parmi les confirmés)."
+    },
+    {
       key: "deces_moins5",
-      label: "dont décès d’enfants de moins de 5 ans",
+      label: "dont décès d’enfants < 5 ans",
+      group: "epi",
+      required: true,
+      help: "Parmi les décès du jour chez les confirmés (confirmés décédés + décès parmi les confirmés)."
+    },
+    {
+      key: "deces_eleves",
+      label: "dont décès d’élèves",
       group: "epi",
       required: true,
       help: "Parmi les décès du jour chez les confirmés (confirmés décédés + décès parmi les confirmés)."
     },
     { key: "gueris", label: "Nouveaux guéris du jour", group: "epi", required: true },
-    {
-      key: "gueris_moins5",
-      label: "dont enfants de moins de 5 ans guéris",
-      group: "epi",
-      required: true,
-      help: "Parmi les nouveaux guéris du jour."
-    },
+    { key: "gueris_ppl", label: "dont PPL guéris", group: "epi", required: true, help: "Parmi les nouveaux guéris du jour." },
+    { key: "gueris_moins5", label: "dont enfants < 5 ans guéris", group: "epi", required: true, help: "Parmi les nouveaux guéris du jour." },
+    { key: "gueris_eleves", label: "dont élèves guéris", group: "epi", required: true, help: "Parmi les nouveaux guéris du jour." },
     {
       key: "deces_non_confirmes",
       label: "Décès probables / communautaires (non confirmés)",
@@ -194,14 +246,14 @@ var SurvEpiImport = (() => {
       const v = val(f.key);
       if (v !== null && (v < 0 || !Number.isInteger(v))) E(f.key, `${f.label} : entier positif attendu.`);
     }
-    if (val("cas_conf_ppl") !== null && val("cas_conf_ppl") > c.cas_conf_total)
-      E("cas_conf_ppl", `PPL (${val("cas_conf_ppl")}) > nouveaux cas confirmés du jour (${c.cas_conf_total}).`);
-    if (val("cas_conf_moins5") !== null && val("cas_conf_moins5") > c.cas_conf_total)
-      E("cas_conf_moins5", `Moins de 5 ans (${val("cas_conf_moins5")}) > nouveaux cas confirmés du jour (${c.cas_conf_total}).`);
-    if (val("deces_moins5") !== null && val("deces_moins5") > c.deces_confirmes_jour)
-      E("deces_moins5", `Décès de moins de 5 ans (${val("deces_moins5")}) > décès du jour chez les confirmés (${c.deces_confirmes_jour}).`);
-    if (val("gueris_moins5") !== null && val("gueris_moins5") > ((_a = val("gueris")) != null ? _a : 0))
-      E("gueris_moins5", `Guéris de moins de 5 ans (${val("gueris_moins5")}) > nouveaux guéris (${(_b = val("gueris")) != null ? _b : 0}).`);
+    for (const g of SOUS_GROUPES) {
+      if (val(g.conf) !== null && val(g.conf) > c.cas_conf_total)
+        E(g.conf, `${g.court} (${val(g.conf)}) > nouveaux cas confirmés du jour (${c.cas_conf_total}).`);
+      if (val(g.deces) !== null && val(g.deces) > c.deces_confirmes_jour)
+        E(g.deces, `Décès ${g.court} (${val(g.deces)}) > décès du jour chez les confirmés (${c.deces_confirmes_jour}).`);
+      if (val(g.gueris) !== null && val(g.gueris) > ((_a = val("gueris")) != null ? _a : 0))
+        E(g.gueris, `Guéris ${g.court} (${val(g.gueris)}) > nouveaux guéris (${(_b = val("gueris")) != null ? _b : 0}).`);
+    }
     if (val("inv_realisees_jour") !== null && val("alertes_validees") !== null && val("inv_realisees_jour") > val("alertes_validees"))
       E("inv_realisees_jour", "Investigations réalisées du jour (Ij) > alertes validées (A).");
     if (val("inv_realisees_report") !== null && val("inv_report_entrant") !== null && val("inv_realisees_report") > val("inv_report_entrant"))
