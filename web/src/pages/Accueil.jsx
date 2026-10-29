@@ -54,8 +54,13 @@ export default function Accueil({ go }) {
         { label: 'Jours sans nouveau cas', value: epi.jours_sans_cas === null ? '–' : num(epi.jours_sans_cas), sub: 'toutes ZS' },
         { label: 'Cumul confirmés', value: num(epi.confirmes), sub: `${num(epi.deces)} décès · ${num(epi.gueris_cumul)} guéris` },
         { label: 'Cas en cours', value: num(epi.actifs), sub: `létalité ${epi.letalite === null ? 'NA' : pct(epi.letalite, 1)}` },
-        { label: 'Sous-groupes (cumul confirmés)', value: SOUS_GROUPES.map((g) => num(epi.groupes[g.id].confirmes)).join(' · '), sub: SOUS_GROUPES.map((g) => g.court).join(' · ') },
       ]} />
+
+      <Band items={['confirmes', 'deces', 'gueris'].map((k) => ({
+        label: `Sous-groupes : cumul ${{ confirmes: 'confirmés', deces: 'décès', gueris: 'guéris' }[k]}`,
+        value: SOUS_GROUPES.map((g) => num(epi.groupes[g.id][k])).join(' · '),
+        sub: SOUS_GROUPES.map((g) => g.court).join(' · '),
+      }))} />
 
       <Band items={[
         { label: 'Rapports reçus', value: `${g.all.recues} / ${g.all.attendues}`, sub: `touchées ${g.touchee.recues}/${g.touchee.attendues} · prépa ${g.preparation.recues}/${g.preparation.attendues}` },
