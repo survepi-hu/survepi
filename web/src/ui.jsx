@@ -202,3 +202,42 @@ export function Signature() {
     </footer>
   );
 }
+
+/**
+ * Camembert (anneau) : parts d'un tout. slices = [{ label, value, tone }] (tone : good | warn | bad | accent | muted).
+ * Valeurs et pourcentages toujours écrits dans la légende : la couleur n'est jamais seule à porter le sens.
+ */
+export function Donut({ title, slices, centre, sous, vide = 'Aucune donnée' }) {
+  const parts = slices.filter((x) => x.value > 0);
+  const total = parts.reduce((a, x) => a + x.value, 0);
+  const R = 42, r = 27, C = 50;
+  let a0 = -Math.PI / 2;
+  const arc = (v) => {
+    const a1 = a0 + (v / total) * Math.PI * 2;
+    const big = a1 - a0 > Math.PI ? 1 : 0;
+    const p = (rad, ang) => `${(C + rad * Math.cos(ang)).toFixed(2)} ${(C + rad * Math.sin(ang)).toFixed(2)}`;
+    const d = parts.length === 1
+      ? `M ${p(R, -Math.PI / 2)} A ${R} ${R} 0 1 1 ${p(R, Math.PI * 1.5 - 0.0001)} L ${p(r, Math.PI * 1.5 - 0.0001)} A ${r} ${r} 0 1 0 ${p(r, -Math.PI / 2)} Z`
+      : `M ${p(R, a0)} A ${R} ${R} 0 ${big} 1 ${p(R, a1)} L ${p(r, a1)} A ${r} ${r} 0 ${big} 0 ${p(r, a0)} Z`;
+    a0 = a1;
+    return d;
+  };
+  return (
+    <figure className="donut">
+      <figcaption className="donut-titre">{title}</figcaption>
+      <div className="donut-corps">
+        <svg viewBox="0 0 100 100" role="img" aria-label={`${title} : ${slices.map((x) => `${x.label} ${x.value}`).join(', ')}`}>
+          {total === 0 ? <circle cx={C} cy={C} r={(R + r) / 2} className="donut-vide" strokeWidth={R - r} fill="none" />
+            : parts.map((x) => <path key={x.label} d={arc(x.value)} className={`donut-part t-${x.tone}`}><title>{`${x.label} : ${num(x.value)} (${pct(x.value / total)})`}</title></path>)}
+          <text x={C} y={C - 1} className="donut-centre">{centre ?? num(total)}</text>
+          {sous && <text x={C} y={C + 11} className="donut-sous">{sous}</text>}
+        </svg>
+        <ul className="donut-legende">
+          {total === 0 ? <li className="muted small">{vide}</li> : slices.map((x) => (
+            <li key={x.label}><i className={`sw t-${x.tone}`} /><span className="donut-lbl">{x.label}</span><strong>{num(x.value)}</strong><span className="muted">{total ? pct(x.value / total) : ''}</span></li>
+          ))}
+        </ul>
+      </div>
+    </figure>
+  );
+}

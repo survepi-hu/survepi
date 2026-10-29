@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useStore } from '../store.jsx';
-import { Band, Section, Pill, Dot, pct, num, Table, Empty, toneOfRate } from '../ui.jsx';
+import { Band, Section, Pill, Dot, pct, num, Table, Empty, toneOfRate, Donut } from '../ui.jsx';
 import { useDay, useGaps, CELL_TONE, CatPill, zsName, backupState } from './common.jsx';
 import { DEFAULT_STEPS } from '../domain/reminders.js';
 import { hhmmToMin, fmtTime, fmtDate } from '../domain/time.js';
@@ -70,6 +70,39 @@ export default function Accueil({ go }) {
         { label: 'Taux de suivi', value: pct(t.taux_suivi), tone: toneOfRate(t.taux_suivi, s.settings.seuil_suivi), sub: `${num(t.ct_vus)} vus / ${num(t.ct_a_suivre)} à suivre` },
         { label: 'Listés ≤ 24 h', value: pct(t.taux_listage), tone: toneOfRate(t.taux_listage), sub: `${num(t.ct_listes_24h)} / ${num(t.ct_identifies)} identifiés` },
       ]} />
+
+      <div className="donuts">
+        <Donut title="Devenir des cas confirmés (cumul)" sous="confirmés" slices={[
+          { label: 'En cours', value: Math.max(0, epi.actifs), tone: 'accent' },
+          { label: 'Guéris', value: epi.gueris_cumul, tone: 'good' },
+          { label: 'Décès', value: epi.deces, tone: 'bad' },
+        ]} />
+        <Donut title="Rapports du jour" sous="attendus" slices={[
+          { label: 'À temps', value: g.all.a_temps, tone: 'good' },
+          { label: 'En retard', value: Math.max(0, g.all.recues - g.all.a_temps), tone: 'warn' },
+          { label: 'Non reçus', value: Math.max(0, g.all.attendues - g.all.recues), tone: 'bad' },
+        ]} />
+        <Donut title="Investigations du jour" sous="alertes" vide="Aucune alerte validée" slices={[
+          { label: 'Réalisées', value: t.inv_realisees_jour || 0, tone: 'good' },
+          { label: 'Non faites', value: t.inv_non_faites || 0, tone: 'bad' },
+        ]} />
+        <Donut title="Suivi des contacts du jour" sous="à suivre" vide="Aucun contact à suivre" slices={[
+          { label: 'Vus', value: t.ct_vus || 0, tone: 'good' },
+          { label: 'Non vus', value: t.ct_non_vus || 0, tone: 'warn' },
+        ]} />
+      </div>
+      <div className="donuts petits">
+        {SOUS_GROUPES.map((sg) => {
+          const x = epi.groupes[sg.id];
+          return (
+            <Donut key={sg.id} title={`Devenir : ${sg.label}`} sous="confirmés" slices={[
+              { label: 'En cours', value: Math.max(0, x.actifs), tone: 'accent' },
+              { label: 'Guéris', value: x.gueris, tone: 'good' },
+              { label: 'Décès', value: x.deces, tone: 'bad' },
+            ]} />
+          );
+        })}
+      </div>
 
       <div className="split">
         <Section title="À traiter">

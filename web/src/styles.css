@@ -398,3 +398,26 @@ ul.plain { margin: 0 0 12px; padding-left: 18px; display: flex; flex-direction: 
 .sous-groupes th { text-align: left; font-weight: 600; }
 .sous-groupe-choix { margin: 14px 0 4px; }
 .version-app { display: block; margin-top: 6px; font-size: .62rem; opacity: .55; letter-spacing: .01em; }
+/* Camemberts de l'accueil */
+.donuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; }
+@media (max-width: 720px) { .donuts { grid-template-columns: 1fr; } }
+.donuts.petits { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.donut { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+.donut-titre { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.donut-corps { display: flex; align-items: center; gap: 12px; }
+.donut svg { width: 100px; height: 100px; flex: none; }
+.petits .donut svg { width: 84px; height: 84px; }
+.donut-part { stroke: var(--surface); stroke-width: 1.5; }
+.donut-part:hover { opacity: .85; }
+.donut-vide { stroke: var(--surface-2); }
+.donut-centre { text-anchor: middle; dominant-baseline: middle; font-size: 15px; font-weight: 700; fill: var(--ink); }
+.donut-sous { text-anchor: middle; font-size: 7px; fill: var(--muted); }
+.donut-legende { list-style: none; margin: 0; padding: 0; font-size: .82rem; display: grid; gap: 5px; min-width: 0; flex: 1; max-width: 260px; white-space: nowrap; }
+.donut-legende li { display: grid; grid-template-columns: 10px 1fr auto auto; gap: 6px; align-items: center; color: var(--ink-2); }
+.donut-lbl { overflow: hidden; text-overflow: ellipsis; }
+.donut-legende strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.donut-legende .muted { font-size: .72rem; min-width: 34px; text-align: right; }
+.donut-legende .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.t-good { fill: var(--good); background: var(--good); } .t-warn { fill: var(--warn); background: var(--warn); }
+.t-bad { fill: var(--bad); background: var(--bad); } .t-accent { fill: var(--accent); background: var(--accent); }
+.t-muted { fill: var(--line); background: var(--line); }
