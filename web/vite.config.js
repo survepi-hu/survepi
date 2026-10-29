@@ -15,7 +15,11 @@ export default defineConfig(({ command, mode }) => {
     }
     if (!/^eyJ/.test(env.VITE_SUPABASE_ANON_KEY)) console.warn('\n  Attention : VITE_SUPABASE_ANON_KEY ne ressemble pas à une clé anon (elle commence normalement par eyJ).\n');
   }
+  // Date de mise en ligne (heure d'Isiro) et commit, affichés en tout petit au bas des pages
+  const maj = new Date().toLocaleString('fr-FR', { timeZone: 'Africa/Lubumbashi', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(' ', ' à ');
+  const commit = (process.env.CF_PAGES_COMMIT_SHA || '').slice(0, 7);
   return {
+    define: { __APP_MAJ__: JSON.stringify(maj), __APP_COMMIT__: JSON.stringify(commit) },
     plugins: [react(), ...(mode === 'demo' ? [viteSingleFile()] : [])],
     build: { outDir: mode === 'demo' ? 'dist-demo' : 'dist' },
     test: { environment: 'node' },

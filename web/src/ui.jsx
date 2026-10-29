@@ -198,6 +198,7 @@ export function Signature() {
   return (
     <footer className="signature">
       Application Pensée par <strong>Dr AMOSI KIKWATA</strong> et Développée par <strong>Konan SAOURE</strong> avec l’appui technique de Claude AI.
+      <span className="version-app">Mise à jour de l’app : {typeof __APP_MAJ__ !== 'undefined' ? __APP_MAJ__ : '?'}{typeof __APP_COMMIT__ !== 'undefined' && __APP_COMMIT__ ? ` · ${__APP_COMMIT__}` : ''}</span>
     </footer>
   );
 }
