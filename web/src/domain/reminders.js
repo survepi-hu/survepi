@@ -120,12 +120,61 @@ export function planDeferralReminders({ now = new Date(), deferrals, actors, zsL
     if (sentKeys.has(key)) continue;
     const zs = zsById[d.zs_id];
     out.push({ key, date: np.date, zs_id: d.zs_id, step: 'report_echu', type: 'report_echu', destinataire_id: resp.id, nom: resp.nom,
-      canal: resp.canal_prefere || 'whatsapp', adresse: resp.whatsapp || resp.sms || resp.email,
+      canal: resp.canal_prefere || 'whatsapp', adresse: (resp.canal_prefere === 'email' ? resp.email : null) || resp.whatsapp || resp.sms || resp.email,
+      copie_email: resp.canal_prefere !== 'email' ? resp.email || null : null,
       message: `Rappel SurvEpi - ${zs?.nom || ''}. ${d.objet === 'investigation' ? 'Investigation' : 'Contact'} ${d.code} reporté(e) au ${fmtDate(d.nouvelle_echeance.slice(0, 10))}, toujours non apuré(e). Merci de mettre à jour le registre.` });
   }
   return out;
 }
 
+
+/**
+ * Alertes sur événement (cahier des charges, 17) envoyées par e-mail à chaque destinataire qui a une adresse
+ * (sinon notification interne) : correction demandée, fiche validée ou rouverte, seuil de reports dépassé.
+ * Clés stables (une seule alerte par événement), indépendantes du jour.
+ */
+export function planEventAlerts({ now = new Date(), validations = [], reports = [], investigations = [], contacts = [], actors, zsList, settings, sentKeys = new Set() }) {
+  const np = localParts(now, settings.fuseau);
+  const zsById = Object.fromEntries(zsList.map((z) => [z.id, z]));
+  const repById = Object.fromEntries(reports.map((r) => [r.id, r]));
+  const out = [];
+  const envoyer = (key, a, role, zs, sujet, corps) => {
+    if (!a || sentKeys.has(key)) return;
+    out.push({ key, date: np.date, zs_id: zs?.id || null, step: role, type: role, destinataire_id: a.id, nom: a.nom,
+      canal: a.email ? 'email' : 'in_app', adresse: a.email || a.id, message: `${sujet}. ${corps}`, mode: 'auto', statut: a.email ? 'en_attente' : 'envoye' });
+  };
+  const rapporteurs = (zs) => recipientsFor({ destinataires: ['rapporteur', 'suppleant'] }, zs, actors).map((d) => actors.find((a) => a.id === d.id)).filter(Boolean);
+  const parRole = (roles, zs) => actors.filter((a) => roles.includes(a.role) && (a.statut || 'actif') === 'actif' && (!a.zs_ids?.length || !zs || a.zs_ids.includes(zs.id) || ['team_lead', 'validateur', 'data_manager', 'admin'].includes(a.role)));
+  for (const v of validations) {
+    const r = repById[v.report_id]; const zs = r && zsById[r.zs_id];
+    if (!r || !zs) continue;
+    const quand = fmtDate(r.date);
+    if (v.action === 'retourner') {
+      for (const a of rapporteurs(zs)) envoyer(`evt|retour|${v.id}|${a.id}`, a, 'correction_demandee', zs, `SurvEpi - ${zs.nom} - ${quand} : correction demandée`,
+        `La fiche est retournée pour correction${v.commentaire ? ` : « ${v.commentaire} »` : ''}. Merci de corriger et de resoumettre.`);
+    } else if (v.action === 'rouvrir') {
+      for (const a of rapporteurs(zs)) envoyer(`evt|rouvert|${v.id}|${a.id}`, a, 'fiche_rouverte', zs, `SurvEpi - ${zs.nom} - ${quand} : fiche rouverte`,
+        `La fiche validée a été rouverte pour correction (modification tracée).${v.commentaire ? ` Motif : « ${v.commentaire} ».` : ''}`);
+    } else if (v.action === 'valider_zs' || v.action === 'valider_prov') {
+      const niveau = v.action === 'valider_zs' ? '1re validation (ZS)' : '2e validation (province) : donnée officielle';
+      const dest = [...rapporteurs(zs), ...(v.action === 'valider_prov' ? parRole(['data_manager'], zs) : [])];
+      for (const a of dest) envoyer(`evt|valide|${v.id}|${a.id}`, a, 'validation_effectuee', zs, `SurvEpi - ${zs.nom} - ${quand} : fiche validée`, `${niveau}.`);
+    }
+  }
+  const seuil = Number(settings.seuil_escalade_reports ?? 2);
+  for (const [objet, liste, ouvert] of [['investigation', investigations, (x) => !['realisee', 'cloturee'].includes(x.statut)], ['contact', contacts, (x) => !['sorti_j21', 'sorti', 'decede'].includes(x.statut)]]) {
+    for (const o of liste.filter((x) => (x.nb_reports || 0) >= seuil && ouvert(x))) {
+      const zs = zsById[o.zs_id];
+      for (const a of parRole(['epidemiologiste', 'team_lead'], zs)) envoyer(`evt|seuil|${objet}|${o.id}|${o.nb_reports}|${a.id}`, a, 'seuil_reports', zs,
+        `SurvEpi - ${zs?.nom || ''} : action superviseur requise`, `${objet === 'investigation' ? 'Investigation' : 'Contact'} ${o.code || ''} reporté(e) ${o.nb_reports} fois (seuil : ${seuil}). Merci d’intervenir.`);
+    }
+  }
+  return out;
+}
+
+/** Colonnes de la table notifications : tout le reste (rôle, heure prévue, état…) sert au calcul et n'est pas stocké. */
+export const NOTIF_COLS = ['key', 'date', 'zs_id', 'step', 'type', 'destinataire_id', 'nom', 'canal', 'adresse', 'message', 'mode', 'lien', 'statut', 'erreur'];
+export const toNotifRow = (row) => Object.fromEntries(NOTIF_COLS.filter((k) => row[k] !== undefined).map((k) => [k, row[k]]));
 
 // ------------------------------------------------------------------ Canaux
 // Sans compte WhatsApp Business : les messages WhatsApp sont préparés par le système et

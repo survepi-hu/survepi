@@ -231,3 +231,35 @@ describe('Canaux sans WhatsApp Business', () => {
     expect(waLink('', 'a b')).toBe('https://wa.me/?text=a%20b');
   });
 });
+
+import { planEventAlerts, toNotifRow, dispatch as dispatch2, planReminders as planR } from './reminders.js';
+describe('Alertes par e-mail', () => {
+  const zsList = [{ id: 'isiro', nom: 'Isiro', rapporteur_id: 'r1', suppleant_id: 'r2' }];
+  const actors = [{ id: 'r1', nom: 'Rapporteur', role: 'rapporteur', email: 'r1@x.cd', whatsapp: '+243', canal_prefere: 'whatsapp', zs_ids: ['isiro'] },
+    { id: 'r2', nom: 'Suppléant', role: 'rapporteur', zs_ids: ['isiro'] },
+    { id: 'dm', nom: 'DM', role: 'data_manager', email: 'dm@x.cd', zs_ids: [] },
+    { id: 'tl', nom: 'TL', role: 'team_lead', email: 'tl@x.cd', zs_ids: [] },
+    { id: 'ep', nom: 'Épi', role: 'epidemiologiste', email: 'ep@x.cd', zs_ids: ['isiro'] }];
+  const reports = [{ id: 'f1', zs_id: 'isiro', date: '2026-11-08' }];
+  it('correction demandée, validation et seuil de reports : un e-mail par destinataire, une seule fois', () => {
+    const validations = [{ id: 1, report_id: 'f1', action: 'retourner', commentaire: 'Sources' }, { id: 2, report_id: 'f1', action: 'valider_prov' }];
+    const investigations = [{ id: 'i1', code: 'INV-1', zs_id: 'isiro', statut: 'reportee', nb_reports: 2 }];
+    const rows = planEventAlerts({ validations, reports, investigations, actors, zsList, settings: {} });
+    const par = (t) => rows.filter((r) => r.type === t).map((r) => `${r.destinataire_id}:${r.canal}`).sort();
+    expect(par('correction_demandee')).toEqual(['r1:email', 'r2:in_app']);
+    expect(par('validation_effectuee')).toEqual(['dm:email', 'r1:email', 'r2:in_app']);
+    expect(par('seuil_reports')).toEqual(['ep:email', 'tl:email']);
+    const again = planEventAlerts({ validations, reports, investigations, actors, zsList, settings: {}, sentKeys: new Set(rows.map((r) => r.key)) });
+    expect(again).toHaveLength(0);
+  });
+  it('les lignes enregistrées ne gardent que les colonnes de la table', () => {
+    const row = toNotifRow({ key: 'k', role: 'rapporteur', prevu_a: '12:00', secours: '+243', canal: 'email', statut: 'en_attente', message: 'm', date: '2026-11-08', step: 's', type: 't', mode: 'auto' });
+    expect(Object.keys(row).sort()).toEqual(['canal', 'date', 'key', 'message', 'mode', 'statut', 'step', 'type']);
+  });
+  it('les rappels partent aussi par e-mail à qui a une adresse, même si le canal préféré est WhatsApp', () => {
+    const now = new Date('2026-11-09T10:05:00Z'); // 12:05 à Isiro
+    const plan = planR({ now, zsList: [{ ...zsList[0], frequence: 'quotidienne', statut: 'touchee' }], actors, reports: [], settings: { fuseau: 'Africa/Lubumbashi' } });
+    const rows = dispatch2(plan, {});
+    expect(rows.some((r) => r.canal === 'email' && r.adresse === 'r1@x.cd' && r.statut === 'en_attente')).toBe(true);
+  });
+});
