@@ -4,10 +4,12 @@ import { dailySeries, weeklySeries, aggregate, isExpected, groupOf, zsCategory }
 import { isSubmitted } from '../domain/report.js';
 import { addDays, dateRange, fmtTime, fmtDate } from '../domain/time.js';
 import { tauxSortieJ21, anciennete } from '../domain/registry.js';
-import { Band, Bars, LineChart, Section, Table, Tabs, Pill, pct, num, toneOfRate } from '../ui.jsx';
+import { Band, Bars, LineChart, Section, Table, Tabs, Pill, pct, num, toneOfRate, Donut } from '../ui.jsx';
 import { useDay, CELL_TONE, CatPill } from './common.jsx';
 import { situationProvince, rapportPrecedent, nouveautes, detection, ETATS, SOUS_GROUPES } from '../domain/epi.js';
-import { FIELD_BY_KEY } from '../domain/report.js';
+import { FIELD_BY_KEY, SOURCES_ALERTES, SITES_RA } from '../domain/report.js';
+import { sommeAlertes } from '../domain/alertes.js';
+import { statsAs } from '../domain/epi.js';
 
 export default function Dashboard() {
   const s = useStore();
@@ -37,6 +39,14 @@ export default function Dashboard() {
     const vers = s.data.versions.filter((x) => x.report_id === r.id);
     return { z, r, prec, compte: detection(r, prec, vers).compte, items: nouveautes(r, prec, vers) };
   }), [s.visibleZs, end, s.idx, s.data.reports, s.data.versions]);
+  const al = useMemo(() => {
+    const rows = s.visibleZs.map((z) => ({ zs: z, t: sommeAlertes([s.idx.get(`${end}|${z.id}`)]) }));
+    return { rows, t: sommeAlertes(s.visibleZs.map((z) => s.idx.get(`${end}|${z.id}`))) };
+  }, [s.visibleZs, end, s.idx]);
+  const alSeries = useMemo(() => (tab === 'alertes' ? dateRange(from, end).map((d) => ({ d, t: sommeAlertes(s.visibleZs.map((z) => s.idx.get(`${d}|${z.id}`))) })) : []), [tab, s.visibleZs, from, end, s.idx]);
+  const asTouchesListe = useMemo(() => (tab === 'epi' ? s.visibleZs.flatMap((z) => [...statsAs(z.id, end, areas, s.data.reports).values()].filter((x) => x.premier).map((x) => ({ ...x, zs: z })))
+    .sort((a, b) => (a.jours_sans_cas ?? 9999) - (b.jours_sans_cas ?? 9999) || a.area.nom.localeCompare(b.area.nom, 'fr')) : []), [tab, s.visibleZs, end, areas, s.data.reports]);
+  const nv = (t, x) => (t.fiches ? num(x) : '–');
   const ser = (k) => series.map((d) => ({ x: d.date, y: d[k] }));
   const g = day.groups;
 
@@ -45,7 +55,7 @@ export default function Dashboard() {
       <header className="page-head">
         <h1>Tableau de bord</h1>
         <div className="row">
-          <Tabs value={tab} onChange={setTab} tabs={[['epi', 'Situation épidémio'], ['nouv', 'Nouveautés du jour'], ['province', 'Provincial'], ['inv', 'Investigations'], ['ct', 'Contacts'], ['groupes', 'Touchées / préparation'], ['se', 'Semaines épi']]} />
+          <Tabs value={tab} onChange={setTab} tabs={[['epi', 'Situation épidémio'], ['alertes', 'Alertes & recherche active'], ['nouv', 'Nouveautés du jour'], ['province', 'Provincial'], ['inv', 'Investigations'], ['ct', 'Contacts'], ['groupes', 'Touchées / préparation'], ['se', 'Semaines épi']]} />
           <label className="inline">Période
             <select id="span" value={span} onChange={(e) => setSpan(Number(e.target.value))}>
               {[7, 14, 21, 30, 42, 90, 180].map((n) => <option key={n} value={n}>{n} jours</option>)}
@@ -93,6 +103,23 @@ export default function Dashboard() {
             </Table>
             <p className="muted small">Cumuls = valeurs initiales validées de chaque ZS + événements des fiches soumises. Une correction validée d’une fiche passée se répercute d’elle-même. Les décès probables ou communautaires non confirmés ne sont jamais ajoutés au cumul des décès.</p>
           </Section>
+          <Section title={`Aires de santé touchées (${asTouchesListe.length})`}>
+            {asTouchesListe.length === 0 ? <p className="muted small">Aucune aire de santé touchée enregistrée.</p> : (
+              <Table>
+                <thead><tr><th>Aire de santé</th><th>ZS</th><th>1er cas confirmé</th><th>Dernier cas confirmé</th><th className="n">Cas saisis par AS</th><th className="n">Jours sans nouveau cas</th></tr></thead>
+                <tbody>
+                  {asTouchesListe.map((x) => (
+                    <tr key={x.area.id}>
+                      <td><strong>{x.area.nom}</strong>{x.premier === end && <Pill tone="bad">nouvelle</Pill>}</td><td>{x.zs.nom}</td>
+                      <td>{fmtDate(x.premier, true)}</td><td>{fmtDate(x.dernier, true)}</td><td className="n">{num(x.cas)}</td>
+                      <td className={`n ${x.jours_sans_cas === 0 ? 'tone-bad' : ''}`}>{x.jours_sans_cas ?? 'NA'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+            <p className="muted small">Les cas par AS ne sont connus que depuis la saisie du nombre de cas par aire de santé ; avant, seule la date du 1er cas est connue.</p>
+          </Section>
           <Section title="Sous-groupes parmi les confirmés" aside={<span className="muted small">Peuvent se recouper : jamais additionnés au total des confirmés</span>}>
             <Table>
               <thead><tr><th>Province</th><th className="n">Nouveaux du jour</th><th className="n">Décès du jour</th><th className="n">Guéris du jour</th><th className="n">Cumul confirmés</th><th className="n">% des confirmés</th><th className="n">Cumul décès</th><th className="n">Létalité</th><th className="n">Cumul guéris</th><th className="n">En cours</th></tr></thead>
@@ -137,6 +164,64 @@ export default function Dashboard() {
           </Section>
           <Section title="Cumuls">
             <LineChart series={[{ name: 'Cumul confirmés', values: sitSeries.map((p) => ({ x: p.d, y: p.t.confirmes })) }, { name: 'Cumul décès', values: sitSeries.map((p) => ({ x: p.d, y: p.t.deces })) }, { name: 'En cours', values: sitSeries.map((p) => ({ x: p.d, y: p.t.actifs })) }]} />
+          </Section>
+        </>
+      )}
+
+      {tab === 'alertes' && (
+        <>
+          {al.t.renseigne === 0 && <p className="note">Aucune fiche du {fmtDate(end)} ne renseigne encore les alertes et la recherche active (rubriques en vigueur depuis la matrice V2.1).</p>}
+          <Band items={[
+            { label: 'Alertes du jour', value: num(al.t.alertes_jour), sub: `${num(al.t.alertes_vivantes)} vivantes · ${num(al.t.alertes_deces)} décès · report ${num(al.t.alertes_report)}` },
+            { label: 'Validées (cas suspects)', value: num(al.t.alertes_validees), sub: `taux de validation ${al.t.taux_validation === null ? 'NA' : pct(al.t.taux_validation)}` },
+            { label: 'Investiguées', value: num(al.t.alertes_investiguees), sub: `investigations réalisées : ${num(al.t.inv_total)}`, tone: al.t.alertes_investiguees !== al.t.inv_total ? 'warn' : null },
+            { label: 'Suspects isolés / prélevés', value: `${num(al.t.suspects_isoles)} / ${num(al.t.suspects_preleves)}`, sub: `prélevés ${al.t.part_preleves === null ? 'NA' : pct(al.t.part_preleves)}` },
+            { label: 'Report final (stock ouvert)', value: num(al.t.alertes_report_final), sub: `${num(al.t.alertes_cloturees)} clôturées ce jour`, tone: al.t.alertes_report_final ? 'warn' : null },
+          ]} />
+          <Band items={[
+            { label: 'Recherche active : planifiées / réalisées', value: `${num(al.t.ra_planifiees)} / ${num(al.t.ra_realisees_plan)}`, sub: `taux ${al.t.taux_ra === null ? 'NA' : pct(al.t.taux_ra)}`, tone: al.t.taux_ra !== null && al.t.taux_ra < 0.8 ? 'warn' : null },
+            { label: 'Visites hors plan', value: num(al.t.ra_non_planifiees) },
+            { label: 'ESS : dossiers examinés', value: num(al.t.ra_ess_dossiers), sub: `${num(al.t.ra_ess_detectees)} alertes · ${num(al.t.ra_ess_validees)} validées · ${num(al.t.ra_ess_en_cours)} en cours` },
+            { label: 'Communauté : alertes détectées', value: num(al.t.ra_com_detectees), sub: `${num(al.t.ra_com_verifiees)} vérifiées · ${num(al.t.ra_com_validees)} validées` },
+            { label: 'Décès suspects communautaires', value: `${num(al.t.ra_com_deces_signales)} / ${num(al.t.ra_com_deces_investigues)}`, sub: 'signalés / investigués', tone: al.t.ra_com_deces_investigues < al.t.ra_com_deces_signales ? 'warn' : null },
+          ]} />
+          <div className="donuts">
+            <Donut title="Sources des alertes du jour" sous="alertes" vide="Aucune alerte" slices={SOURCES_ALERTES.map(([k, label], i) => ({ label, value: al.t[k], tone: `c${i + 1}` }))} />
+            <figure className="donut">
+              <figcaption className="donut-titre">Sites visités en recherche active</figcaption>
+              {al.t.ra_visites === 0 ? <p className="muted small">Aucune visite</p> : (
+                <ul className="barres">
+                  {SITES_RA.map(([k, label]) => ({ k, label, v: al.t[k] })).sort((a, b) => b.v - a.v).map((x) => (
+                    <li key={x.k}><span>{x.label}</span><i style={{ width: `${Math.max(x.v ? 4 : 0, (x.v / Math.max(1, ...SITES_RA.map(([kk]) => al.t[kk]))) * 100)}%` }} /><strong>{num(x.v)}</strong></li>
+                  ))}
+                </ul>
+              )}
+            </figure>
+          </div>
+          <Section title={`Par ZS au ${fmtDate(end)}`}>
+            <Table>
+              <thead><tr><th>ZS</th><th className="n">Report</th><th className="n">Alertes du jour</th><th className="n">Validées</th><th className="n">Investiguées</th><th className="n">Isolés</th><th className="n">Prélevés</th>
+                {SOURCES_ALERTES.map(([k, label]) => <th key={k} className="n">{label.split(' (')[0]}</th>)}<th className="n">Report final</th><th className="n">RA plan. / réal.</th><th className="n">Taux RA</th><th className="n">Hors plan</th></tr></thead>
+              <tbody>
+                {al.rows.map(({ zs: z, t }) => (
+                  <tr key={z.id}>
+                    <td><strong>{z.nom}</strong>{!t.renseigne && <Pill tone="muted">{t.fiches ? 'non renseigné' : 'pas de fiche'}</Pill>}</td>
+                    <td className="n">{nv(t, t.alertes_report)}</td><td className="n">{nv(t, t.alertes_jour)}</td><td className="n">{nv(t, t.alertes_validees)}</td>
+                    <td className={`n ${t.renseigne && t.alertes_investiguees !== t.inv_total ? 'tone-warn' : ''}`}>{nv(t, t.alertes_investiguees)}</td>
+                    <td className="n">{nv(t, t.suspects_isoles)}</td><td className="n">{nv(t, t.suspects_preleves)}</td>
+                    {SOURCES_ALERTES.map(([k]) => <td key={k} className="n">{nv(t, t[k])}</td>)}
+                    <td className="n">{nv(t, t.alertes_report_final)}</td><td className="n">{nv(t, t.ra_planifiees)} / {nv(t, t.ra_realisees_plan)}</td>
+                    <td className="n">{!t.fiches ? '–' : t.taux_ra === null ? 'NA' : pct(t.taux_ra)}</td><td className="n">{nv(t, t.ra_non_planifiees)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </Section>
+          <Section title={`Alertes par jour, ${span === 0 ? `depuis le ${fmtDate(debut)}` : `${span} derniers jours`}`}>
+            <LineChart series={[{ name: 'Alertes du jour', values: alSeries.map((p) => ({ x: p.d, y: p.t.alertes_jour })) }, { name: 'Validées', values: alSeries.map((p) => ({ x: p.d, y: p.t.alertes_validees })) }, { name: 'Investiguées', values: alSeries.map((p) => ({ x: p.d, y: p.t.alertes_investiguees })) }]} />
+          </Section>
+          <Section title="Taux de recherche active par jour">
+            <LineChart yFormat={pct} yMax={1} series={[{ name: 'Visites planifiées réalisées / planifiées', values: alSeries.map((p) => ({ x: p.d, y: p.t.taux_ra })) }]} />
           </Section>
         </>
       )}

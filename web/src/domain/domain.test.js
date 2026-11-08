@@ -32,8 +32,9 @@ describe('Investigations', () => {
     expect(errors.map((e) => e.field)).toEqual(expect.arrayContaining(['inv_realisees_jour', 'inv_realisees_report']));
   });
   it('motif obligatoire si des investigations restent non faites', () => {
-    expect(validate(full({ alertes_validees: 4, inv_realisees_jour: 3 })).errors.some((e) => e.field === 'motifs_inv')).toBe(true);
-    expect(validate(full({ alertes_validees: 4, inv_realisees_jour: 3, motifs_inv: ['carburant'] })).errors).toHaveLength(0);
+    const a = { alertes_vivantes: 4, src_ess: 4, alertes_validees: 4, inv_realisees_jour: 3 };
+    expect(validate(full(a)).errors.some((e) => e.field === 'motifs_inv')).toBe(true);
+    expect(validate(full({ ...a, motifs_inv: ['carburant'] })).errors).toHaveLength(0);
   });
   it('A = 0 -> taux NA, pas 0 %', () => {
     expect(compute(full()).taux_inv).toBeNull();
@@ -63,7 +64,7 @@ describe('Contacts', () => {
   });
   it('carry-over : report entrant = report sortant veille', () => {
     const prev = full({ alertes_validees: 6, inv_realisees_jour: 4, inv_report_entrant: 3, inv_realisees_report: 1, ct_report: 20, ct_listes_24h: 5, ct_vus: 22 });
-    expect(carryOver(prev)).toEqual({ inv_report_entrant: 4, ct_report: 25, ct_nonvus_veille: 3 });
+    expect(carryOver(prev)).toEqual({ inv_report_entrant: 4, ct_report: 25, ct_nonvus_veille: 3, alertes_report: 0 });
   });
 });
 

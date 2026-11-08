@@ -8,6 +8,8 @@ import { exportXlsx, exportCsv, copyTable } from '../export.js';
 import { Section, Field } from '../ui.jsx';
 import { actorName, zsName } from './common.jsx';
 import { situationProvince, SOUS_GROUPES } from '../domain/epi.js';
+import { sommeAlertes } from '../domain/alertes.js';
+import { SOURCES_ALERTES, SITES_RA } from '../domain/report.js';
 
 const P = (v) => (v === null || v === undefined ? 'NA' : Math.round(v * 1000) / 10);
 
@@ -67,6 +69,16 @@ export default function Exports() {
       ...Object.assign({}, ...SOUS_GROUPES.map((g) => ({ [`${g.court} nouveaux`]: t.groupes[g.id].jour.conf, [`${g.court} cumul`]: t.groupes[g.id].confirmes,
         [`${g.court} décès cumul`]: t.groupes[g.id].deces, [`${g.court} guéris cumul`]: t.groupes[g.id].gueris }))) };
   });
+  const ligneAlertes = (nom, t) => ({ ZS: nom, 'Report alertes': t.alertes_report, 'Alertes du jour': t.alertes_jour, Vivantes: t.alertes_vivantes, Décès: t.alertes_deces,
+    Validées: t.alertes_validees, 'Taux de validation (%)': P(t.taux_validation), Investiguées: t.alertes_investiguees, 'Suspects isolés': t.suspects_isoles, 'Suspects prélevés': t.suspects_preleves,
+    'Prélevés / isolés (%)': P(t.part_preleves), ...Object.fromEntries(SOURCES_ALERTES.map(([k, l]) => [`Source : ${l}`, t[k]])), 'Report final': t.alertes_report_final,
+    'RA planifiées': t.ra_planifiees, 'RA planifiées réalisées': t.ra_realisees_plan, 'Taux RA (%)': P(t.taux_ra), 'RA hors plan': t.ra_non_planifiees,
+    ...Object.fromEntries(SITES_RA.map(([k, l]) => [`Site : ${l}`, t[k]])), 'ESS dossiers examinés': t.ra_ess_dossiers, 'ESS alertes détectées': t.ra_ess_detectees,
+    'ESS validées': t.ra_ess_validees, 'ESS en cours de validation': t.ra_ess_en_cours, 'Communauté détectées': t.ra_com_detectees, 'Communauté vérifiées': t.ra_com_verifiees,
+    'Communauté validées': t.ra_com_validees, 'Décès suspects signalés': t.ra_com_deces_signales, 'Décès suspects investigués': t.ra_com_deces_investigues });
+  const alertes = (d = s.date) => [...s.visibleZs.map((z) => ligneAlertes(z.nom, sommeAlertes([s.idx.get(`${d}|${z.id}`)]))),
+    ligneAlertes('Province', sommeAlertes(s.visibleZs.map((z) => s.idx.get(`${d}|${z.id}`))))];
+  const alertesSerie = () => dateRange(from, to).map((d) => ({ Date: d, SE: epiWeek(d).label, ...ligneAlertes('Province', sommeAlertes(s.visibleZs.map((z) => s.idx.get(`${d}|${z.id}`)))) }));
   const reportsList = () => s.data.deferrals.filter((d) => !d.apure && zsIds.includes(d.zs_id)).map((d) => ({
     Type: d.objet, Code: d.code, ZS: zsName(s, d.zs_id), 'Date initiale': d.date_initiale, 'Ancienneté (j)': anciennete(d, s.np.date), 'N° report': d.numero,
     Motif: d.motif, 'Nouvelle échéance': d.nouvelle_echeance.slice(0, 10), Responsable: actorName(s, d.responsable_id),
@@ -105,11 +117,13 @@ export default function Exports() {
   const d = s.date;
 
   const products = [
-    { k: 'situation', t: 'Situation journalière', desc: `Matrice en 3 rubriques du ${d} : situation épidémiologique, investigations et suivi des contacts par ZS, reports en souffrance.`,
-      xlsx: () => { const x = situation(); return exportXlsx(`SurvEpi_situation_${d}.xlsx`, [{ name: 'Situation épidémio', rows: epi() }, { name: 'KPI', rows: x.kpi }, { name: 'ZS', rows: x.zs }, { name: 'Reports', rows: reportsList() }]); },
+    { k: 'situation', t: 'Situation journalière', desc: `Matrice du ${d} : alertes et recherche active, situation épidémiologique, investigations et suivi des contacts par ZS, reports en souffrance.`,
+      xlsx: () => { const x = situation(); return exportXlsx(`SurvEpi_situation_${d}.xlsx`, [{ name: 'Alertes et RA', rows: alertes() }, { name: 'Situation épidémio', rows: epi() }, { name: 'KPI', rows: x.kpi }, { name: 'ZS', rows: x.zs }, { name: 'Reports', rows: reportsList() }]); },
       copy: () => copy(situation().zs, 'Tableau ZS'), copy2: () => copy(situation().kpi, 'KPI') },
     { k: 'epi', t: 'Situation épidémiologique (évolution)', desc: 'Nouveaux cas, décès, guéris, AS touchées et cumuls provinciaux, jour par jour.', period: true,
       xlsx: () => exportXlsx(`SurvEpi_situation_epi_${from}_${to}.xlsx`, [{ name: 'Par jour', rows: epiSerie() }, { name: `ZS au ${to}`, rows: epi(to) }]), copy: () => copy(epi(), 'Situation épidémio') },
+    { k: 'alertes', t: 'Alertes et recherche active', desc: 'Alertes, sources, suspects isolés et prélevés, indicateurs de recherche active : par ZS au dernier jour et provincial jour par jour.', period: true,
+      xlsx: () => exportXlsx(`SurvEpi_alertes_RA_${from}_${to}.xlsx`, [{ name: 'Province par jour', rows: alertesSerie() }, { name: `ZS au ${to}`, rows: alertes(to) }]), copy: () => copy(alertes(), 'Alertes et RA') },
     { k: 'se', t: 'Rapport semaine épidémiologique', desc: 'Tendances hebdomadaires : investigations, listage, suivi, réception.',
       xlsx: () => exportXlsx(`SurvEpi_SE_${epiWeek(d).label}.xlsx`, [{ name: 'Semaines', rows: se() }]), copy: () => copy(se(), 'Synthèse SE') },
     { k: 'reports', t: 'Liste des reports', desc: 'Investigations et contacts non apurés, en temps réel.',

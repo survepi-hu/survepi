@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../store.jsx';
 import { INV_STATUTS, deferInvestigation, needsSupervisor, realisationKind } from '../domain/registry.js';
+import { DOC_STATUTS, DOC_RECU, docStatut, CONVENTION_DOC } from '../domain/registry.js';
 import { MOTIFS_INVESTIGATION } from '../domain/report.js';
 import { addDays, fmtDate } from '../domain/time.js';
 import { Table, Section, Pill, Modal, Field, Empty, num } from '../ui.jsx';
@@ -52,7 +53,7 @@ export default function Investigations() {
         </select>
         <input id="f-q" placeholder="Code, cas, aire de santé" value={q} onChange={(e) => setQ(e.target.value)} />
         <span className="grow" />
-        {s.role !== 'coordination' && <button className="btn primary" onClick={() => setEdit({ date_ref: T, zs_id: fz || s.myZs[0] || zsIds[0], statut: 'a_faire', narratif: false, mapping: false, nb_contacts: 0, nb_reports: 0, responsable_id: '' })}>Nouvelle investigation</button>}
+        {s.role !== 'coordination' && <button className="btn primary" onClick={() => setEdit({ date_ref: T, zs_id: fz || s.myZs[0] || zsIds[0], statut: 'a_faire', narratif: false, mapping: false, narratif_statut: 'attendu', mapping_statut: 'attendu', nb_contacts: 0, nb_reports: 0, responsable_id: '' })}>Nouvelle investigation</button>}
       </div>
       <Section>
         {list.length === 0 ? <Empty>Aucune investigation pour ces filtres.</Empty> : (
@@ -70,7 +71,7 @@ export default function Investigations() {
                   <td>{actorName(s, i.responsable_id)}</td>
                   <td className="n">{num(i.nb_reports)}</td>
                   <td>{i.statut === 'reportee' && i.nouvelle_echeance ? <>{fmtDate(i.nouvelle_echeance.slice(0, 10))}{i.nouvelle_echeance.slice(0, 10) < T && <Pill tone="bad">échue</Pill>}<small className="blk muted">{MOTIF[i.motif_report] || i.motif_report}</small></> : '–'}</td>
-                  <td>{i.narratif ? 'N' : '·'} {i.mapping ? 'M' : '·'}</td>
+                  <td className="doc-statuts">{['narratif', 'mapping'].map((t) => { const st = docStatut(i, t); return <span key={t} className={`etat doc-${st}`} title={`${t === 'narratif' ? 'Narratif / descriptif' : 'Mapping'} : ${DOC_STATUTS.find((x) => x[0] === st)?.[1]}`}>{t === 'narratif' ? 'N' : 'M'} {DOC_STATUTS.find((x) => x[0] === st)?.[1].split(' (')[0]}</span>; })}</td>
                   <td className="n">{num(i.nb_contacts)}</td>
                   <td className="row-actions">
                     {canEdit(i) && i.statut === 'a_faire' && <button className="btn ghost small" onClick={() => s.actions.update('investigations', i.id, { statut: 'en_cours', debut: new Date().toISOString() }, 'Investigation démarrée')}>Démarrer</button>}
@@ -96,8 +97,14 @@ export default function Investigations() {
             <Field label="Code du cas / investigation" hint="Si disponible"><input id="i-cas" value={edit.code_cas || ''} onChange={(e) => setEdit({ ...edit, code_cas: e.target.value })} /></Field>
             <Field label="Responsable"><select id="i-resp" value={edit.responsable_id || ''} onChange={(e) => setEdit({ ...edit, responsable_id: e.target.value })}><option value="">–</option>{responsables.map((a) => <option key={a.id} value={a.id}>{a.nom}</option>)}</select></Field>
             <Field label="Contacts identifiés"><input id="i-nbc" type="number" min="0" value={edit.nb_contacts} onChange={(e) => setEdit({ ...edit, nb_contacts: Math.max(0, Number(e.target.value) || 0) })} /></Field>
-            <label className="chk"><input type="checkbox" checked={!!edit.narratif} onChange={(e) => setEdit({ ...edit, narratif: e.target.checked })} />Narratif disponible</label>
-            <label className="chk"><input type="checkbox" checked={!!edit.mapping} onChange={(e) => setEdit({ ...edit, mapping: e.target.checked })} />Mapping disponible</label>
+            {['narratif', 'mapping'].map((t) => (
+              <Field key={t} label={t === 'narratif' ? 'Narratif / descriptif' : 'Mapping'}>
+                <select id={`i-${t}`} value={docStatut(edit, t)} onChange={(e) => setEdit({ ...edit, [`${t}_statut`]: e.target.value, [t]: DOC_RECU.includes(e.target.value) })}>
+                  {DOC_STATUTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </select>
+              </Field>
+            ))}
+            <p className="muted small wide">Nommage attendu : {CONVENTION_DOC}. Avant de classer un document comme absent, vérifier dans le Drive les fichiers déjà déposés sous un autre nom (« reçu mais mal nommé »).</p>
             <Field label="Commentaire" wide><textarea id="i-com" rows="2" value={edit.commentaire || ''} onChange={(e) => setEdit({ ...edit, commentaire: e.target.value })} /></Field>
           </div>
           <div className="actions">

@@ -107,3 +107,19 @@ export function findDuplicates(contacts) {
   }
   return dups;
 }
+
+
+/** Statuts des narratifs / descriptifs et des mappings (cahier des charges V2.1, G). */
+export const DOC_STATUTS = [
+  ['non_attendu', 'Non attendu'],
+  ['attendu', 'Attendu (pas encore reçu)'],
+  ['recu', 'Reçu'],
+  ['mal_nomme', 'Reçu mais mal nommé'],
+  ['a_corriger', 'À corriger'],
+  ['valide', 'Validé'],
+];
+export const DOC_RECU = ['recu', 'mal_nomme', 'a_corriger', 'valide'];
+/** Statut d'un document d'investigation, y compris pour les fiches d'avant les statuts (case cochée seulement). */
+export const docStatut = (i, type) => i[`${type}_statut`] || (i[type] ? 'recu' : 'attendu');
+/** Convention de nommage : narratif pour un cas confirmé, descriptif pour un cas suspect. */
+export const CONVENTION_DOC = 'NARRATIF_MAPPING_ZS_NOM_PRENOM_AAAAMMJJ_V01.pptx (cas confirmé) · DESCRIPTIF_MAPPING_ZS_NOM_PRENOM_AAAAMMJJ_V01.pptx (cas suspect)';

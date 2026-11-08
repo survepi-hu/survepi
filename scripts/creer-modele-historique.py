@@ -17,7 +17,7 @@ HELP['nouvelles_as'] = 'Noms des aires de santé qui ont eu leur 1er cas confirm
 N = 3000
 DEEP, BLUE = '004E80', '0086C4'
 thin = Side(style='thin', color='CFDFEC'); grid = Border(left=thin, right=thin, top=thin, bottom=thin)
-GROUPES = {'cas_conf_vivants': 'FBE7E5', 'nouvelles_as': 'FBE7E5', 'alertes_validees': 'D9EEF8', 'ct_report': 'E8F4EA', 'ct_sortie_21j': 'FDF1DC', 'ct_vus': 'EFE8F6', 'reco_actifs': 'F3F3F3'}
+GROUPES = {'alertes_report': 'FDECEA', 'ra_planifiees': 'FFF6DB', 'cas_conf_vivants': 'FBE7E5', 'nouvelles_as': 'FBE7E5', 'inv_report_entrant': 'D9EEF8', 'ct_report': 'E8F4EA', 'ct_sortie_21j': 'FDF1DC', 'ct_vus': 'EFE8F6', 'reco_actifs': 'F3F3F3'}
 
 wb = Workbook()
 lire = wb.active; lire.title = 'À lire'

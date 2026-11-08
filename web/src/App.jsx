@@ -53,8 +53,23 @@ function useHash() {
   return [h, (k) => { location.hash = k; setH(k); }];
 }
 
+/** Déconnexion automatique après inactivité (paramètre deconnexion_inactivite_min, 0 = jamais). */
+function useDeconnexionInactivite(s) {
+  const min = Number(s.settings?.deconnexion_inactivite_min ?? 60);
+  useEffect(() => {
+    if (!s.user || !min) return undefined;
+    let t;
+    const arme = () => { clearTimeout(t); t = setTimeout(() => { s.notify?.(`Déconnecté après ${min} min d’inactivité.`, 'warn'); s.actions.logout(); }, min * 60000); };
+    const ev = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    ev.forEach((e) => addEventListener(e, arme, { passive: true }));
+    arme();
+    return () => { clearTimeout(t); ev.forEach((e) => removeEventListener(e, arme)); };
+  }, [s.user?.id, min]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
 export default function App() {
   const s = useStore();
+  useDeconnexionInactivite(s);
   const [page, go] = useHash();
   const [menu, setMenu] = useState(false);
   const prov = provinceNom(s.settings);

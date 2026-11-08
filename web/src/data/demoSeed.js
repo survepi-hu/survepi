@@ -108,7 +108,7 @@ export function buildDemo(now = new Date()) {
   const reports = [];
   const start = addDays(T, -34);
   for (const z of ZS) {
-    let carry = { inv: 0, ct: 0, nonvus: 0, nonListes: 0 };
+    let carry = { inv: 0, ct: 0, nonvus: 0, nonListes: 0, alertes: 0 };
     let burst = z.ct0; // listage initial au 1er jour actif
     const zb = zs.find((x) => x.id === z.id);
     let enCours = zb.base_date ? zb.base_confirmes - zb.base_deces - zb.base_gueris : 0; // guéris et décès bornés par les cas en cours
@@ -145,6 +145,17 @@ export function buildDemo(now = new Date()) {
           const libres = areas.filter((a) => a.zs_id === z.id && !a.touchee_le && !reports.some((x) => (x.nouvelles_as || []).includes(a.id)));
           const touchees = areas.filter((a) => a.zs_id === z.id).length - libres.length;
           if (rep.cas_conf_vivants + rep.cas_conf_decedes > 0 && libres.length && touchees < z.as_affectees && r() < 0.5) rep.nouvelles_as = [libres[0].id];
+          // Cas du jour répartis par aire de santé : la nouvelle AS, sinon une AS déjà touchée
+          const totalCas = rep.cas_conf_vivants + rep.cas_conf_decedes;
+          if (totalCas > 0) {
+            const dejaTouchees = areas.filter((a) => a.zs_id === z.id && (a.touchee_le || reports.some((x) => (x.nouvelles_as || []).includes(a.id))));
+            const cible = rep.nouvelles_as[0] || dejaTouchees[Math.floor(r() * dejaTouchees.length)]?.id || libres[0]?.id;
+            if (cible) {
+              rep.cas_par_as = [{ as_id: cible, n: totalCas }];
+              if (!rep.nouvelles_as.length && !dejaTouchees.some((a) => a.id === cible)) rep.nouvelles_as = [cible];
+            }
+          }
+          rep.cas_conf_decedes_ppl = rep.cas_conf_ppl && rep.cas_conf_decedes && !rep.cas_conf_vivants ? 1 : 0;
         }
         enCours += rep.cas_conf_vivants;
         rep.deces_parmi_confirmes = enCours > 0 && r() < 0.05 ? 1 : 0;
@@ -171,6 +182,26 @@ export function buildDemo(now = new Date()) {
         const Ir = R > 0 ? Math.max(0, R - (r() < 0.35 ? 1 : 0)) : 0;
         Object.assign(rep, { alertes_validees: A, inv_report_entrant: R, inv_realisees_jour: Ij, inv_realisees_report: z.id === 'dungu' && ago <= 2 ? 0 : Ir });
         const tot = Ij + rep.inv_realisees_report;
+        // Alertes (agrégées) et recherche active, cohérentes avec les contrôles
+        const essDet = r() < 0.3 ? 1 : 0, comDet = r() < 0.3 ? 1 : 0, srcRa = essDet + comDet;
+        let jour = Math.max(A - carry.alertes, 0) + Math.floor(r() * 3);
+        jour = Math.max(jour, srcRa, tot - carry.alertes);
+        const traitables = carry.alertes + jour;
+        const deces = jour > 0 && r() < 0.2 ? 1 : 0;
+        const poe = jour - srcRa > 0 && r() < 0.1 ? 1 : 0;
+        const ess = Math.floor((jour - srcRa - poe) / 2);
+        const closed = Math.min(traitables, Math.max(A, tot) + Math.floor((traitables - Math.max(A, tot)) * 0.7));
+        const isoles = Math.max(0, A - (r() < 0.3 ? 1 : 0));
+        Object.assign(rep, { alertes_report: carry.alertes, alertes_vivantes: jour - deces, alertes_deces: deces, alertes_investiguees: tot,
+          suspects_isoles: isoles, suspects_preleves: Math.max(0, isoles - (r() < 0.2 ? 1 : 0)),
+          src_ess: ess, src_communaute: jour - srcRa - poe - ess, src_ra: srcRa, src_poe: poe, alertes_report_final: traitables - closed });
+        const plan = 3 + Math.floor(r() * 5), faites = plan - (r() < 0.3 ? 1 : 0), horsPlan = r() < 0.3 ? 1 : 0, visites = faites + horsPlan;
+        const cs = Math.ceil(visites * 0.5), hgr = Math.min(1, visites - cs), pharma = Math.min(1, visites - cs - hgr);
+        const essVal = essDet && r() < 0.5 ? 1 : 0, comVal = comDet && r() < 0.5 ? 1 : 0, decesSig = r() < 0.1 ? 1 : 0;
+        Object.assign(rep, { ra_planifiees: plan, ra_realisees_plan: faites, ra_non_planifiees: horsPlan,
+          ra_site_cs: cs, ra_site_hgr: hgr, ra_site_pharma: pharma, ra_site_tradi: visites - cs - hgr - pharma,
+          ra_ess_dossiers: 10 + Math.floor(r() * 40), ra_ess_detectees: essDet, ra_ess_validees: essVal, ra_ess_en_cours: essDet - essVal,
+          ra_com_detectees: comDet, ra_com_verifiees: comDet, ra_com_validees: comVal, ra_com_deces_signales: decesSig, ra_com_deces_investigues: decesSig });
         rep.inv_moins_24h = Math.max(0, Ij - (r() < 0.4 ? 1 : 0));
         rep.narratifs_attendus = tot; rep.narratifs_disponibles = Math.max(0, tot - (r() < 0.3 ? 1 : 0));
         rep.mappings_attendus = tot; rep.mappings_disponibles = Math.max(0, tot - (r() < 0.4 ? 1 : 0));
@@ -223,7 +254,7 @@ export function buildDemo(now = new Date()) {
       rep.version = 1;
       reports.push(rep);
       const c = compute(rep);
-      carry = { inv: c.inv_report_sortant, ct: c.ct_a_suivre, nonvus: c.ct_non_vus, nonListes: c.ct_non_listes_24h };
+      carry = { inv: c.inv_report_sortant, ct: c.ct_a_suivre, nonvus: c.ct_non_vus, nonListes: c.ct_non_listes_24h, alertes: rep.alertes_report_final ?? 0 };
     }
   }
 

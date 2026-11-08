@@ -6,6 +6,7 @@ import { DEFAULT_STEPS } from '../domain/reminders.js';
 import { hhmmToMin, fmtTime, fmtDate } from '../domain/time.js';
 import { needsSupervisor } from '../domain/registry.js';
 import { situationProvince, SOUS_GROUPES } from '../domain/epi.js';
+import { sommeAlertes } from '../domain/alertes.js';
 
 export default function Accueil({ go }) {
   const s = useStore();
@@ -22,6 +23,7 @@ export default function Accueil({ go }) {
   const sup = [...s.data.investigations, ...s.data.contacts].filter((o) => needsSupervisor(o, s.settings.seuil_escalade_reports) && s.visibleZs.some((z) => z.id === o.zs_id));
   const waQueue = s.data.notifications.filter((n) => n.mode === 'manuel' && n.statut === 'a_envoyer').length;
   const epi = useMemo(() => situationProvince(s.visibleZs, s.date, s.data.reports, s.data.areas || []).totaux, [s.visibleZs, s.date, s.data.reports, s.data.areas]);
+  const al = useMemo(() => sommeAlertes(s.visibleZs.map((z) => s.idx.get(`${s.date}|${z.id}`))), [s.visibleZs, s.date, s.idx]);
   const mine = useMemo(() => day.rows.filter((r) => s.myZs.includes(r.zs.id)), [day, s.myZs]);
 
   return (
@@ -54,6 +56,12 @@ export default function Accueil({ go }) {
         { label: 'Jours sans nouveau cas', value: epi.jours_sans_cas === null ? '–' : num(epi.jours_sans_cas), sub: 'toutes ZS' },
         { label: 'Cumul confirmés', value: num(epi.confirmes), sub: `${num(epi.deces)} décès · ${num(epi.gueris_cumul)} guéris` },
         { label: 'Cas en cours', value: num(epi.actifs), sub: `létalité ${epi.letalite === null ? 'NA' : pct(epi.letalite, 1)}` },
+      ]} />
+
+      <Band items={[
+        { label: 'Alertes du jour / validées / investiguées', value: `${num(al.alertes_jour)} / ${num(al.alertes_validees)} / ${num(al.alertes_investiguees)}`, sub: `report final ${num(al.alertes_report_final)}` },
+        { label: 'Suspects isolés / prélevés', value: `${num(al.suspects_isoles)} / ${num(al.suspects_preleves)}`, sub: `prélevés ${al.part_preleves === null ? 'NA' : pct(al.part_preleves)}` },
+        { label: 'Recherche active : planifiées / réalisées', value: `${num(al.ra_planifiees)} / ${num(al.ra_realisees_plan)}`, sub: `taux ${al.taux_ra === null ? 'NA' : pct(al.taux_ra)} · ${num(al.ra_non_planifiees)} hors plan` },
       ]} />
 
       <Band items={['confirmes', 'deces', 'gueris'].map((k) => ({

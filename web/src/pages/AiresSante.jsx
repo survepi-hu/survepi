@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
-import { asTouchees, cumulsZs, SOUS_GROUPES } from '../domain/epi.js';
+import { asTouchees, cumulsZs, statsAs, SOUS_GROUPES } from '../domain/epi.js';
 
 /** Valeur actuellement calculée par l'app pour un champ de valeur initiale. */
 function valeurApp(cu, k) {
@@ -16,7 +16,12 @@ function valeurApp(cu, k) {
 import { fmtDate } from '../domain/time.js';
 import { Section, Table, Pill, Modal, Field, num, pct } from '../ui.jsx';
 
+// Référentiel des aires de santé : administrateur seul (cahier des charges V2.1, 4.3)
+export const ROLES_AS = ['admin'];
+// Valeurs initiales : saisie par l'admin, le Team Lead ou le data manager ; une fois validées, correction
+// par le data manager (ou l'admin) seulement, avec motif (4.4, verrouillage)
 export const ROLES_EPI = ['admin', 'team_lead', 'data_manager'];
+export const peutBase = (role, zs) => (zs?.base_date ? ['admin', 'data_manager'] : ROLES_EPI).includes(role);
 const norm = (x) => x.trim().replace(/\s+/g, ' ');
 const cle = (x) => norm(x).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
@@ -27,9 +32,10 @@ export function AiresSante() {
   const [zsId, setZsId] = useState(s.data.zs[0]?.id || '');
   const [ajout, setAjout] = useState(null); // { texte, touchee_le }
   const [edit, setEdit] = useState(null);
-  const peut = ROLES_EPI.includes(s.role);
+  const peut = ROLES_AS.includes(s.role);
   const zs = s.data.zs.find((z) => z.id === zsId);
   const touchees = useMemo(() => (zs ? asTouchees(zs.id, s.np.date, areas, s.data.reports) : new Map()), [zs, areas, s.data.reports, s.np.date]);
+  const stats = useMemo(() => (zs ? statsAs(zs.id, s.np.date, areas, s.data.reports) : new Map()), [zs, areas, s.data.reports, s.np.date]);
   const liste = areas.filter((a) => a.zs_id === zsId).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
   const utilisee = (id) => s.data.reports.some((r) => (r.nouvelles_as || []).includes(id));
 
@@ -46,7 +52,7 @@ export function AiresSante() {
 
   return (
     <>
-      <p className="muted small">Liste des aires de santé (AS) de chaque ZS. Sur la fiche du jour, le rapporteur coche les AS qui enregistrent leur 1er cas confirmé : le comptage est automatique et une AS déjà touchée n’est jamais recomptée. Les AS touchées avant la mise en service se marquent ici avec leur date.</p>
+      <p className="muted small">{peut ? '' : 'Liste gérée par l’administrateur. '}Liste des aires de santé (AS) de chaque ZS. Sur la fiche du jour, le rapporteur coche les AS qui enregistrent leur 1er cas confirmé : le comptage est automatique et une AS déjà touchée n’est jamais recomptée. Les AS touchées avant la mise en service se marquent ici avec leur date.</p>
       <Section title={null} aside={(
         <div className="row">
           <label className="inline">ZS
@@ -59,7 +65,7 @@ export function AiresSante() {
       )}>
         {liste.length === 0 ? <p className="muted">Aucune aire de santé enregistrée pour {zs?.nom || 'cette ZS'}. {peut ? 'Coller la liste avec « Ajouter des AS ».' : ''}</p> : (
           <Table>
-            <thead><tr><th>Aire de santé</th><th>Code DHIS2</th><th>Touchée</th><th>Origine</th><th>État</th><th></th></tr></thead>
+            <thead><tr><th>Aire de santé</th><th>Code DHIS2</th><th>Touchée</th><th>Dernier cas</th><th className="n">Cas saisis</th><th className="n">Jours sans nouveau cas</th><th>Origine</th><th>État</th><th></th></tr></thead>
             <tbody>
               {liste.map((a) => {
                 const t = touchees.get(a.id);
@@ -68,6 +74,9 @@ export function AiresSante() {
                     <td><strong>{a.nom}</strong></td>
                     <td className="mono">{a.code_dhis2 || <span className="muted">–</span>}</td>
                     <td>{t ? <Pill tone="bad">Touchée le {fmtDate(t.date, true)}</Pill> : <Pill tone="muted">Non touchée</Pill>}</td>
+                    <td>{stats.get(a.id)?.dernier ? fmtDate(stats.get(a.id).dernier, true) : <span className="muted">–</span>}</td>
+                    <td className="n">{stats.get(a.id)?.cas || <span className="muted">–</span>}</td>
+                    <td className={`n ${stats.get(a.id)?.jours_sans_cas === 0 ? 'tone-bad' : ''}`}>{stats.get(a.id)?.jours_sans_cas ?? <span className="muted">–</span>}</td>
                     <td className="muted small">{t ? (t.origine === 'initiale' ? 'Valeur initiale' : 'Fiche du jour') : ''}</td>
                     <td>{a.actif === false ? <Pill tone="muted">Désactivée</Pill> : 'Active'}</td>
                     <td className="row-actions">{peut && <button className="btn ghost small" onClick={() => setEdit({ ...a })}>Modifier</button>}</td>
@@ -136,21 +145,24 @@ const BASE = [
 export function ValeursInitiales({ zs, onClose }) {
   const s = useStore();
   const ref = (s.data.zs_ref || s.data.zs).find((z) => z.id === zs.id) || zs;
+  const correction = !!ref.base_date;
   const [f, setF] = useState({ base_date: ref.base_date || '', base_valide_par: ref.base_valide_par || '', base_valide_le: ref.base_valide_le || '',
+    base_source: ref.base_source || '', base_motif: '',
     ...Object.fromEntries(BASE.map(([k]) => [k, ref[k] ?? ''])) });
   // Ce que l'app affiche aujourd'hui pour cette date (valeurs initiales actuelles + fiches) : sert de contrôle
   const fiches = f.base_date ? cumulsZs(ref, f.base_date, s.data.reports) : null;
   const avantRef = f.base_date ? s.data.reports.filter((r) => r.zs_id === zs.id && r.date <= f.base_date).length : 0;
   const n = (v) => (v === '' || v === null ? null : Math.max(0, Math.round(Number(v)) || 0));
-  const ok = !f.base_date || (f.base_valide_par.trim() && f.base_valide_le);
+  const ok = (!f.base_date || (f.base_valide_par.trim() && f.base_valide_le)) && (!correction || f.base_motif.trim());
   const incoherent = f.base_date && n(f.base_deces) + n(f.base_gueris) > n(f.base_confirmes);
   const m5Trop = f.base_date && SOUS_GROUPES.some((g) => n(f[g.base]) > n(f.base_confirmes) || n(f[g.base_deces]) > n(f.base_deces) || n(f[g.base_gueris]) > n(f.base_gueris)
     || n(f[g.base_deces]) + n(f[g.base_gueris]) > n(f[g.base]));
 
   const save = async () => {
     const patch = f.base_date
-      ? { base_date: f.base_date, base_valide_par: f.base_valide_par.trim(), base_valide_le: f.base_valide_le, ...Object.fromEntries(BASE.map(([k]) => [k, n(f[k]) ?? 0])) }
-      : { base_date: null, base_valide_par: null, base_valide_le: null, ...Object.fromEntries(BASE.map(([k]) => [k, null])) };
+      ? { base_date: f.base_date, base_valide_par: f.base_valide_par.trim(), base_valide_le: f.base_valide_le, base_source: f.base_source.trim() || null,
+          base_motif: correction ? f.base_motif.trim() : null, ...Object.fromEntries(BASE.map(([k]) => [k, n(f[k]) ?? 0])) }
+      : { base_date: null, base_valide_par: null, base_valide_le: null, base_source: null, base_motif: correction ? f.base_motif.trim() : null, ...Object.fromEntries(BASE.map(([k]) => [k, null])) };
     await s.actions.update('zs', zs.id, patch, 'Valeurs initiales enregistrées');
     onClose();
   };
@@ -168,6 +180,8 @@ export function ValeursInitiales({ zs, onClose }) {
         ))}
         <Field label="Validé par (équipe data)"><input id="vi-par" disabled={!f.base_date} value={f.base_valide_par} onChange={(e) => setF({ ...f, base_valide_par: e.target.value })} /></Field>
         <Field label="Validé le"><input id="vi-le" type="date" disabled={!f.base_date} value={f.base_valide_le} onChange={(e) => setF({ ...f, base_valide_le: e.target.value })} /></Field>
+        <Field label="Source" hint="Ex. base des cumuls MVE-17 du 29/10, liste linéaire, SitRep."><input id="vi-source" disabled={!f.base_date} value={f.base_source} onChange={(e) => setF({ ...f, base_source: e.target.value })} /></Field>
+        {correction && <Field label="Motif de la correction *" hint="Situation de référence déjà validée : motif obligatoire, ancienne et nouvelle valeurs gardées au journal d’audit."><input id="vi-motif" value={f.base_motif} onChange={(e) => setF({ ...f, base_motif: e.target.value })} /></Field>}
       </div>
       {f.base_date && avantRef > 0 && <p className="note tone-warn">{avantRef} fiche(s) de {zs.nom} datée(s) jusqu’au {fmtDate(f.base_date)} ne seront plus additionnées aux cumuls (elles restent visibles et comptent toujours pour la complétude, les investigations et le suivi).</p>}
       {incoherent && <p className="field-error">Décès + guéris dépassent les cas confirmés.</p>}

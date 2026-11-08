@@ -6,7 +6,7 @@ import { fmtDate } from '../domain/time.js';
 import { Section, Table, Tabs, Pill, Modal, Field, provinceNom } from '../ui.jsx';
 import { CatPill, actorName } from './common.jsx';
 import ImportComptes from './ImportComptes.jsx';
-import { AiresSante, ValeursInitiales, ROLES_EPI } from './AiresSante.jsx';
+import { AiresSante, ValeursInitiales, peutBase } from './AiresSante.jsx';
 
 const slug = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -18,7 +18,6 @@ export default function Referentiel() {
   const [acct, setAcct] = useState(null); // { actor, action, busy, result, error }
   const [imp, setImp] = useState(false);
   const [vi, setVi] = useState(null);
-  const canBase = ROLES_EPI.includes(s.role);
   const T = s.np.date;
   const canZs = ['admin', 'team_lead'].includes(s.role);
   const canActors = s.role === 'admin';
@@ -53,7 +52,7 @@ export default function Referentiel() {
                     <td>{z.frequence}{z.frequence === 'hebdomadaire' ? ` (j${z.jour_hebdo})` : ''}</td>
                     <td>{z.heure_limite || s.settings.heure_limite}</td>
                     <td>{z.base_date ? <span title={`Validé par ${z.base_valide_par || '?'}${z.base_valide_le ? ` le ${fmtDate(z.base_valide_le)}` : ''}`}>au {fmtDate(z.base_date, true)} · {z.base_confirmes ?? 0} conf.</span> : <span className="muted">reconstituées</span>}
-                      {canBase && <button className="btn ghost small" onClick={() => setVi(z)}>{z.base_date ? 'Corriger' : 'Saisir'}</button>}</td>
+                      {peutBase(s.role, z) && <button className="btn ghost small" onClick={() => setVi(z)}>{z.base_date ? 'Corriger' : 'Saisir'}</button>}</td>
                     <td>{canZs && <button className="btn ghost small" onClick={() => setEz({ ...((s.data.zs_ref || s.data.zs).find((x) => x.id === z.id) || z) })}>Modifier</button>}</td>
                   </tr>
                 ))}

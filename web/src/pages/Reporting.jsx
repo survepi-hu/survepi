@@ -1,9 +1,9 @@
 import PiecesJointes from './PiecesJointes.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../store.jsx';
-import { FIELD_BY_KEY, MOTIFS_INVESTIGATION, MOTIFS_SUIVI, SORTIES, applyZeroReport, can, canValidate, carryOver, completeness, compute, emptyReport, isLocked, statusOnSubmit, validate } from '../domain/report.js';
+import { FIELD_BY_KEY, MOTIFS_INVESTIGATION, MOTIFS_SUIVI, SORTIES, SOURCES_ALERTES, SITES_RA, requis, applyZeroReport, can, canValidate, carryOver, completeness, compute, emptyReport, isLocked, statusOnSubmit, validate } from '../domain/report.js';
 import { cellState, zsCategory, isExpected } from '../domain/indicators.js';
-import { ETATS, SOUS_GROUPES, detection, rapportPrecedent, cumulsZs, joursSansNouveauCas, asTouchees, asProposables, avertissementsEpi } from '../domain/epi.js';
+import { ETATS, SOUS_GROUPES, detection, rapportPrecedent, cumulsZs, joursSansNouveauCas, asTouchees, avertissementsEpi, nouvellesAsDepuisCas } from '../domain/epi.js';
 import { addDays, dateRange, fmtDate, fmtTime } from '../domain/time.js';
 import { Pill, Section, pct, num, Empty, Dot } from '../ui.jsx';
 import { CELL_TONE, CatPill, StatutPill, actorName } from './common.jsx';
@@ -53,11 +53,11 @@ function NumInput({ k, form, set, errors, readOnly, prevHint, det }) {
   const err = errors.find((e) => e.field === k);
   return (
     <label className={`field num-field ${err ? 'has-error' : ''}`}>
-      <span className="field-label">{f.short && <b className="short">{f.short}</b>}{f.label}{f.required && <i className="req" title="Obligatoire">*</i>}<Etat d={det?.etats?.[k]} /></span>
+      <span className="field-label">{f.short && <b className="short">{f.short}</b>}{f.label}{requis(f, form) && <i className="req" title="Obligatoire">*</i>}<Etat d={det?.etats?.[k]} /></span>
       <input id={`f-${k}`} type="number" inputMode="numeric" min="0" step="1" value={form[k] ?? ''} readOnly={readOnly}
         onChange={(e) => set({ [k]: e.target.value === '' ? null : Math.max(0, Math.trunc(Number(e.target.value))) })} />
       {prevHint !== undefined && <span className="field-hint">veille : {num(prevHint)}</span>}
-      {f.help && f.group === 'epi' && <span className="field-hint">{f.help}</span>}
+      {f.help && <span className="field-hint">{f.help}</span>}
       {err && <span className="field-error">{err.msg}</span>}
     </label>
   );
@@ -125,7 +125,8 @@ export default function Reporting() {
   const versions = existing ? s.data.versions.filter((x) => x.report_id === existing.id) : [];
   const vals = existing ? s.data.validations.filter((x) => x.report_id === existing.id) : [];
   const cell = cellState(existing, zs, date, s.settings, s.np, prev);
-  const showErr = showAll ? v.errors : v.errors.filter((e) => ['motifs_inv', 'motifs_suivi', 'justif_report_inv', 'justif_report_ct', 'motif_autre'].includes(e.field) ? false : true);
+  const showErr = showAll ? v.errors : v.errors.filter((e) => ['motifs_inv', 'motifs_suivi', 'justif_report_inv', 'justif_report_ct', 'justif_report_alertes', 'motif_autre'].includes(e.field) ? false : true);
+  const champs = (keys) => keys.map((k) => <NumInput key={k} k={k} det={det} {...{ form, set, errors: showErr, readOnly: ro }} prevHint={k === 'alertes_report' && prev ? carry.alertes_report : undefined} />);
 
   const save = async () => { await s.actions.saveReport({ ...form, statut: existing?.statut && existing.statut !== 'brouillon' ? existing.statut : 'brouillon' }, 'Brouillon enregistré'); };
   const submit = async () => {
@@ -140,8 +141,18 @@ export default function Reporting() {
   const jsc = joursSansNouveauCas(zsRef, date, avecFiche);
   const asZs = s.data.areas.filter((a) => a.zs_id === zs.id && a.actif !== false);
   const touchees = asTouchees(zs.id, date, s.data.areas, avecFiche);
-  const proposables = asProposables(zs.id, date, s.data.areas, s.data.reports, existing?.id);
-  const asOptions = [...new Map([...proposables, ...(form.nouvelles_as || []).map((id) => s.data.areas.find((a) => a.id === id)).filter(Boolean)].map((a) => [a.id, a])).values()].sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  // Aires de santé : nombre de nouveaux cas par AS ; les nouvelles AS touchées en sont déduites (jamais recomptées)
+  const avantFiche = asTouchees(zs.id, addDays(date, -1), s.data.areas, s.data.reports.filter((r) => !(r.zs_id === zs.id && r.date === date)));
+  const asListe = [...asZs].sort((a, b) => (avantFiche.has(b.id) - avantFiche.has(a.id)) || a.nom.localeCompare(b.nom, 'fr'));
+  const casAs = (id) => (form.cas_par_as || []).find((x) => x.as_id === id)?.n ?? '';
+  const setCasAs = (id, val) => {
+    const list = (form.cas_par_as || []).filter((x) => x.as_id !== id);
+    if (val > 0) list.push({ as_id: id, n: val });
+    const f2 = { ...form, cas_par_as: list };
+    set({ cas_par_as: list, nouvelles_as: nouvellesAsDepuisCas(f2, s.data.areas, s.data.reports) });
+  };
+  const sommeCasAs = (form.cas_par_as || []).reduce((a, x) => a + (Number(x.n) || 0), 0);
+  const ancienneSaisieAs = !(form.cas_par_as || []).length && (form.nouvelles_as || []).length > 0;
   const avertEpi = avertissementsEpi(form, zsRef, s.data.reports);
   const transition = async (action, to) => {
     if (action === 'retourner' && !returnMsg.trim()) { s.notify('Indiquer ce qu’il faut corriger.', 'bad'); return; }
@@ -194,25 +205,87 @@ export default function Reporting() {
       )}
 
       <form className="fiche" onSubmit={(e) => e.preventDefault()}>
-        <h2 className="rubrique">I. Situation épidémiologique</h2>
+        <h2 className="rubrique">1. Alertes</h2>
+        <fieldset className="blk">
+          <legend>Situation des alertes (nombres agrégés)</legend>
+          <div className="grid-fields">{champs(['alertes_report', 'alertes_vivantes', 'alertes_deces', 'alertes_validees', 'alertes_investiguees', 'suspects_isoles', 'suspects_preleves', 'alertes_report_final'])}</div>
+          <div className="epi-groupe">
+            <span className="epi-groupe-titre">Sources des alertes du jour (somme = alertes du jour)</span>
+            <div className="grid-fields">{champs(SOURCES_ALERTES.map(([k]) => k))}</div>
+          </div>
+          <div className="calcs">
+            <Calc label="Alertes du jour" value={num(c.alertes_jour)} />
+            <Calc label="À traiter (report + jour)" value={num(c.alertes_a_traiter)} />
+            <Calc label="Clôturées dans la journée" value={num(c.alertes_cloturees)} />
+            <Calc label="Taux de validation" value={pct(c.taux_validation_alertes)} />
+            <Calc label="Prélevés / isolés" value={pct(c.part_preleves)} />
+            <Calc label="Somme des sources" value={num(c.sources_total)} tone={SOURCES_ALERTES.some(([k]) => form[k] !== null && form[k] !== undefined) && c.sources_total !== c.alertes_jour ? 'bad' : null} />
+          </div>
+          {prev && prev.alertes_report_final !== null && prev.alertes_report_final !== undefined && form.alertes_report !== null && form.alertes_report !== carry.alertes_report && (
+            <label className="field wide"><span className="field-label">Justification du report alertes modifié (report final de la veille : {carry.alertes_report})<i className="req">*</i></span>
+              <input id="justif_report_alertes" value={form.justif_report_alertes || ''} readOnly={ro} onChange={(e) => set({ justif_report_alertes: e.target.value })} /></label>
+          )}
+          <p className="muted small">Les alertes validées alimentent directement le module Investigations (A). Aucun détail d’alerte n’est stocké.</p>
+        </fieldset>
+
+        <h2 className="rubrique">2. Recherche active</h2>
+        <fieldset className="blk">
+          <legend>Visites</legend>
+          <div className="grid-fields">{champs(['ra_planifiees', 'ra_realisees_plan', 'ra_non_planifiees'])}</div>
+          <div className="epi-groupe">
+            <span className="epi-groupe-titre">Types de sites visités (facultatif : somme = visites réalisées, plan + hors plan)</span>
+            <div className="grid-fields">{champs(SITES_RA.map(([k]) => k))}</div>
+          </div>
+          <div className="calcs">
+            <Calc label="Taux de recherche active (planifiées réalisées)" value={pct(c.taux_ra)} />
+            <Calc label="Visites réalisées (plan + hors plan)" value={num(c.ra_visites)} />
+            <Calc label="Somme des types de sites" value={num(c.ra_sites_total)} />
+          </div>
+        </fieldset>
+        <fieldset className="blk">
+          <legend>Dans les établissements de santé (ESS)</legend>
+          <div className="grid-fields">{champs(['ra_ess_dossiers', 'ra_ess_detectees', 'ra_ess_validees', 'ra_ess_en_cours'])}</div>
+        </fieldset>
+        <fieldset className="blk">
+          <legend>Dans la communauté</legend>
+          <div className="grid-fields">{champs(['ra_com_detectees', 'ra_com_verifiees', 'ra_com_validees', 'ra_com_deces_signales', 'ra_com_deces_investigues'])}</div>
+        </fieldset>
+
+        <h2 className="rubrique">3. Situation épidémiologique</h2>
         <fieldset className="blk">
           <legend>Événements du jour</legend>
-          {[['Nouveaux cas confirmés', ['cas_conf_vivants', 'cas_conf_decedes', ...SOUS_GROUPES.map((g) => g.conf)]],
-            ['Décès du jour parmi les confirmés', ['deces_parmi_confirmes', ...SOUS_GROUPES.map((g) => g.deces)]],
+          {[['Nouveaux cas confirmés', ['cas_conf_vivants', 'cas_conf_decedes', ...SOUS_GROUPES.flatMap((g) => [g.conf, g.confDec])]],
+            ['Décès ultérieurs parmi les cas déjà confirmés', ['deces_parmi_confirmes', ...SOUS_GROUPES.map((g) => g.deces)]],
             ['Guérisons du jour', ['gueris', ...SOUS_GROUPES.map((g) => g.gueris)]],
             ['Suivi à part', ['deces_non_confirmes']]].map(([titre, keys]) => (
             <div key={titre} className="epi-groupe">
               <span className="epi-groupe-titre">{titre}</span>
-              <div className="grid-fields">
-                {keys.map((k) => <NumInput key={k} k={k} det={det} {...{ form, set, errors: showErr, readOnly: ro }} />)}
-              </div>
+              <div className="grid-fields">{champs(keys)}</div>
             </div>
           ))}
           <div className="sub-block">
-            <span className="field-label">Nouvelles aires de santé touchées <small className="muted">(1er cas confirmé dans l’AS)</small></span>
-            {asZs.length === 0 ? <p className="muted small">Aucune aire de santé enregistrée pour cette ZS : liste à compléter dans « ZS & acteurs », onglet Aires de santé.</p>
-              : asOptions.length === 0 ? <p className="muted small">Toutes les aires de santé de la ZS sont déjà touchées.</p>
-                : <Checks id="nouvelles_as" options={asOptions.map((a) => [a.id, a.nom])} value={form.nouvelles_as || []} readOnly={ro} onChange={(x) => set({ nouvelles_as: x })} />}
+            <span className="field-label">Nouveaux cas confirmés par aire de santé <small className="muted">(une AS qui notifie son 1er cas devient « nouvelle AS touchée », jamais recomptée)</small></span>
+            {asZs.length === 0 ? <p className="muted small">Aucune aire de santé enregistrée pour cette ZS : liste à compléter dans « ZS & acteurs », onglet Aires de santé.</p> : (
+              <>
+                {ancienneSaisieAs && <p className="muted small">Saisie antérieure : nouvelles AS touchées déclarées sans nombre de cas ({form.nouvelles_as.map((id) => s.data.areas.find((a) => a.id === id)?.nom || '?').join(', ')}).</p>}
+                {(c.cas_conf_total > 0 || (form.cas_par_as || []).length > 0) ? (
+                  <div className="as-cas" id="cas_par_as">
+                    {asListe.map((a) => {
+                      const nouvelle = (form.nouvelles_as || []).includes(a.id);
+                      return (
+                        <label key={a.id} className={`as-cas-ligne ${casAs(a.id) ? 'on' : ''}`}>
+                          <span className="as-nom">{a.nom}</span>
+                          {avantFiche.has(a.id) ? <span className="muted small">touchée le {fmtDate(avantFiche.get(a.id).date, true)}</span> : nouvelle ? <span className="etat etat-nouveau">nouvelle AS touchée</span> : <span className="muted small">non touchée</span>}
+                          <input type="number" min="0" step="1" inputMode="numeric" readOnly={ro} value={casAs(a.id)} aria-label={`Nouveaux cas confirmés à ${a.nom}`}
+                            onChange={(e) => setCasAs(a.id, e.target.value === '' ? 0 : Math.max(0, Math.trunc(Number(e.target.value))))} />
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : <p className="muted small">À remplir quand il y a de nouveaux cas confirmés.</p>}
+                {(form.cas_par_as || []).length > 0 && <p className={`small ${sommeCasAs !== c.cas_conf_total ? 'field-error' : 'muted'}`}>Répartis : {sommeCasAs} / {c.cas_conf_total} nouveau(x) cas confirmé(s).</p>}
+              </>
+            )}
           </div>
           <div className="calcs">
             <Calc label="Nouveaux confirmés du jour" value={num(c.cas_conf_total)} tone={c.cas_conf_total ? 'bad' : null} />
@@ -248,11 +321,11 @@ export default function Reporting() {
           {avertEpi.map((w) => <p key={w.msg} className="note tone-warn">{w.msg}</p>)}
         </fieldset>
 
-        <h2 className="rubrique">II. Investigations</h2>
+        <h2 className="rubrique">4. Investigations</h2>
         <fieldset className="blk">
           <legend>Investigations</legend>
+          <div className="calcs"><Calc label="Alertes validées du jour (A, rubrique 1)" value={num(form.alertes_validees)} /></div>
           <div className="grid-fields">
-            <NumInput det={det} k="alertes_validees" {...{ form, set, errors: showErr, readOnly: ro }} />
             <NumInput det={det} k="inv_report_entrant" {...{ form, set, errors: showErr, readOnly: ro }} prevHint={prev ? carry.inv_report_entrant : undefined} />
             <NumInput det={det} k="inv_realisees_jour" {...{ form, set, errors: showErr, readOnly: ro }} />
             <NumInput det={det} k="inv_realisees_report" {...{ form, set, errors: showErr, readOnly: ro }} />
@@ -285,7 +358,7 @@ export default function Reporting() {
           </div>
         </fieldset>
 
-        <h2 className="rubrique">III. Suivi des contacts</h2>
+        <h2 className="rubrique">5. Suivi des contacts</h2>
         <fieldset className="blk">
           <legend>Contacts : listage</legend>
           <div className="grid-fields">
@@ -345,7 +418,7 @@ export default function Reporting() {
           )}
           <textarea id="commentaire" rows="3" value={form.commentaire || ''} readOnly={ro} placeholder={v.warnings.length ? 'Commentaire obligatoire : expliquer les avertissements ci-dessus.' : 'Commentaire qualité (facultatif)'}
             onChange={(e) => set({ commentaire: e.target.value })} />
-          {showAll && v.errors.filter((e) => e.field === 'justif_report_inv' || e.field === 'justif_report_ct').map((e) => <span key={e.field} className="field-error">{e.msg}</span>)}
+          {showAll && v.errors.filter((e) => ['justif_report_inv', 'justif_report_ct', 'justif_report_alertes'].includes(e.field)).map((e) => <span key={e.field} className="field-error">{e.msg}</span>)}
         </fieldset>
 
         {editable && (

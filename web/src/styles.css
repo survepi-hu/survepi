@@ -421,3 +421,26 @@ ul.plain { margin: 0 0 12px; padding-left: 18px; display: flex; flex-direction: 
 .t-good { fill: var(--good); background: var(--good); } .t-warn { fill: var(--warn); background: var(--warn); }
 .t-bad { fill: var(--bad); background: var(--bad); } .t-accent { fill: var(--accent); background: var(--accent); }
 .t-muted { fill: var(--line); background: var(--line); }
+/* Cas par aire de santé */
+.as-cas { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 14px; margin-top: 6px; }
+.as-cas-ligne { display: grid; grid-template-columns: 1fr auto 70px; gap: 8px; align-items: center; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+.as-cas-ligne.on { border-color: var(--accent); background: var(--accent-soft); }
+.as-cas-ligne input { width: 70px; }
+.as-nom { font-weight: 600; font-size: .86rem; }
+/* Fiche : champs alignés en haut, intitulé sur une hauteur fixe de 3 lignes au plus */
+.fiche .grid-fields { align-items: start; }
+.fiche .num-field .field-label { min-height: 3.8em; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 2px 4px; line-height: 1.25; }
+.fiche .num-field .field-hint { font-size: .72rem; line-height: 1.3; }
+/* Couleurs catégorielles (sources d'alertes) : identité, pas un état */
+.t-c1 { fill: #0086c4; background: #0086c4; } .t-c2 { fill: #e07a2f; background: #e07a2f; }
+.t-c3 { fill: #6b4fa3; background: #6b4fa3; } .t-c4 { fill: #2b9c8f; background: #2b9c8f; }
+/* Barres horizontales simples */
+.barres { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font-size: .8rem; }
+.barres li { display: grid; grid-template-columns: 150px 1fr 34px; gap: 8px; align-items: center; color: var(--ink-2); }
+.barres i { display: block; height: 10px; border-radius: 0 3px 3px 0; background: var(--accent); }
+.barres strong { text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+.doc-statuts { white-space: nowrap; } .doc-statuts .etat { margin-right: 4px; }
+.doc-valide { background: var(--good-bg); color: var(--good); } .doc-recu { background: var(--accent-soft); color: var(--accent); }
+.doc-mal_nomme, .doc-a_corriger { background: var(--warn-bg); color: var(--warn); } .doc-attendu { background: var(--bad-bg); color: var(--bad); }
+.doc-non_attendu { background: var(--surface-2); color: var(--muted); }
+p.wide { grid-column: 1 / -1; }

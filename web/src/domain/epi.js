@@ -6,7 +6,7 @@ import { NUM_KEYS, compute, isSubmitted, FIELD_BY_KEY, SOUS_GROUPES } from './re
 export { SOUS_GROUPES };
 import { diffDays } from './time.js';
 
-export const EPI_KEYS = ['cas_conf_vivants', 'cas_conf_decedes', 'deces_parmi_confirmes', 'gueris', 'deces_non_confirmes', ...SOUS_GROUPES.flatMap((g) => [g.conf, g.deces, g.gueris])];
+export const EPI_KEYS = ['cas_conf_vivants', 'cas_conf_decedes', 'deces_parmi_confirmes', 'gueris', 'deces_non_confirmes', ...SOUS_GROUPES.flatMap((g) => [g.conf, g.confDec, g.deces, g.gueris])];
 const z = (v) => (v === null || v === undefined || v === '' ? 0 : Number(v) || 0);
 const retenue = (r) => isSubmitted(r);
 
@@ -24,11 +24,12 @@ export function cumulsZs(zs, date, reports) {
   const gueris = z(zs.base_gueris) + somme('gueris');
   // Enfants de moins de 5 ans : même logique, sous-ensemble de chaque cumul
   const moins5 = z(zs.base_moins5) + somme('cas_conf_moins5');
-  const deces_moins5 = z(zs.base_deces_moins5) + somme('deces_moins5');
+  const deces_moins5 = z(zs.base_deces_moins5) + somme('cas_conf_decedes_moins5') + somme('deces_moins5');
   const gueris_moins5 = z(zs.base_gueris_moins5) + somme('gueris_moins5');
   // Tous les sous-groupes, même calcul : valeurs initiales + événements
   const groupes = Object.fromEntries(SOUS_GROUPES.map((g) => {
-    const c = z(zs[g.base]) + somme(g.conf), d = z(zs[g.base_deces]) + somme(g.deces), gu = z(zs[g.base_gueris]) + somme(g.gueris);
+    // décès du sous-groupe = déjà décédés à la confirmation + décès ultérieurs parmi les déjà confirmés
+    const c = z(zs[g.base]) + somme(g.conf), d = z(zs[g.base_deces]) + somme(g.confDec) + somme(g.deces), gu = z(zs[g.base_gueris]) + somme(g.gueris);
     return [g.id, { confirmes: c, deces: d, gueris: gu, actifs: c - d - gu, letalite: c > 0 ? d / c : null }];
   }));
   return {
@@ -84,9 +85,40 @@ export function asTouchees(zsId, date, areas, reports) {
   for (const a of areas) if (a.zs_id === zsId && a.touchee_le && a.touchee_le <= date) m.set(a.id, { date: a.touchee_le, origine: 'initiale' });
   for (const r of reports) {
     if (r.zs_id !== zsId || r.date > date || !retenue(r)) continue;
-    for (const id of r.nouvelles_as || []) if (!m.has(id) || m.get(id).date > r.date) m.set(id, { date: r.date, origine: r.id });
+    const ids = [...(r.nouvelles_as || []), ...(r.cas_par_as || []).filter((x) => z(x.n) > 0).map((x) => x.as_id)];
+    for (const id of ids) if (!m.has(id) || m.get(id).date > r.date) m.set(id, { date: r.date, origine: r.id });
   }
   return m;
+}
+
+/**
+ * Statistiques par aire de santé à `date` : 1er et dernier cas confirmé, cumul des cas (saisis par AS),
+ * jours sans nouveau cas. Les AS touchées avant la mise en service partent de leur date « touchée le ».
+ */
+export function statsAs(zsId, date, areas, reports) {
+  const out = new Map();
+  for (const a of areas.filter((x) => x.zs_id === zsId)) out.set(a.id, { area: a, premier: a.touchee_le && a.touchee_le <= date ? a.touchee_le : null, dernier: a.touchee_le && a.touchee_le <= date ? a.touchee_le : null, cas: 0 });
+  for (const r of reports) {
+    if (r.zs_id !== zsId || r.date > date || !retenue(r)) continue;
+    const marque = (id, n) => {
+      const x = out.get(id); if (!x) return;
+      if (!x.premier || r.date < x.premier) x.premier = r.date;
+      if (!x.dernier || r.date > x.dernier) x.dernier = r.date;
+      x.cas += n;
+    };
+    for (const c of r.cas_par_as || []) if (z(c.n) > 0) marque(c.as_id, z(c.n));
+    for (const id of r.nouvelles_as || []) if (!(r.cas_par_as || []).some((c) => c.as_id === id)) marque(id, 0);
+  }
+  for (const x of out.values()) x.jours_sans_cas = x.dernier ? Math.max(0, diffDays(date, x.dernier)) : null;
+  return out;
+}
+
+/** Nouvelles AS d'une fiche, déduites des cas par AS : celles qui n'étaient pas encore touchées. */
+export function nouvellesAsDepuisCas(form, areas, reports) {
+  const deja = asTouchees(form.zs_id, form.date, areas, reports.filter((r) => r.id !== form.id && !(r.zs_id === form.zs_id && r.date === form.date)));
+  const ailleurs = new Set(reports.filter((r) => r.zs_id === form.zs_id && r.id !== form.id && r.date !== form.date).flatMap((r) => r.nouvelles_as || []));
+  return (form.cas_par_as || []).filter((c) => z(c.n) > 0 && !(deja.has(c.as_id) && deja.get(c.as_id).date < form.date) && !ailleurs.has(c.as_id)
+    && !(areas.find((a) => a.id === c.as_id)?.touchee_le && areas.find((a) => a.id === c.as_id).touchee_le <= form.date)).map((c) => c.as_id);
 }
 
 /**
@@ -109,7 +141,8 @@ export function situationZs(zs, date, reports, areas) {
     jour: r ? { vivants: r.cas_conf_vivants, decedes: r.cas_conf_decedes, total: r.cas_conf_vivants === null && r.cas_conf_decedes === null ? null : compute(r).cas_conf_total,
       ppl: r.cas_conf_ppl, moins5: r.cas_conf_moins5, deces_parmi: r.deces_parmi_confirmes, deces_moins5: r.deces_moins5,
       gueris: r.gueris, gueris_moins5: r.gueris_moins5, deces_nc: r.deces_non_confirmes,
-      groupes: Object.fromEntries(SOUS_GROUPES.map((g) => [g.id, { conf: r[g.conf], deces: r[g.deces], gueris: r[g.gueris] }])) } : null,
+      groupes: Object.fromEntries(SOUS_GROUPES.map((g) => [g.id, { conf: r[g.conf],
+        deces: r[g.confDec] === null && r[g.deces] === null ? null : z(r[g.confDec]) + z(r[g.deces]), gueris: r[g.gueris] }])) } : null,
     nouvelles_as: nouvelles,
     as_touchees: touchees.size,
     as_total: areas.filter((a) => a.zs_id === zs.id && a.actif !== false).length || zs.as_total || null,
@@ -160,7 +193,7 @@ export function avertissementsEpi(form, zs, reports) {
     out.push({ field: 'gueris', msg: `Guéris + décès parmi les confirmés (${sorties}) dépassent les cas confirmés en cours (${Math.max(0, veille.actifs) + z(form.cas_conf_vivants)}). Vérifier les valeurs initiales de la ZS.` });
   // Sous-groupes : décès + guéris du jour ≤ en cours la veille + nouveaux du jour
   for (const g of SOUS_GROUPES) {
-    const v = veille.groupes[g.id], sorties = z(form[g.deces]) + z(form[g.gueris]), dispo = Math.max(0, v.actifs) + z(form[g.conf]);
+    const v = veille.groupes[g.id], sorties = z(form[g.deces]) + z(form[g.gueris]), dispo = Math.max(0, v.actifs) + z(form[g.conf]) - z(form[g.confDec]);
     if (sorties > dispo)
       out.push({ field: g.gueris, msg: `Décès + guéris ${g.court} (${sorties}) dépassent les ${g.court} confirmés en cours (${dispo}). Vérifier les valeurs initiales de la ZS.` });
   }

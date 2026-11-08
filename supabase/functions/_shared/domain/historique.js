@@ -29,6 +29,7 @@ function headerKey(h) {
   const n = norm(h);
   if (!n) return null;
   for (const [key, label] of HIST_HEADERS) if (n === norm(label) || n === norm(key)) return key;
+  for (const f of FIELDS) if ((f.aliases || []).some((a) => n === norm(a) || n.startsWith(norm(a)))) return f.key; // anciens intitulés
   for (const [key, label] of HIST_HEADERS) if (n.startsWith(norm(label))) return key; // « Date * », « Source (ex. …) »
   if (n.startsWith('zone') || n === 'zs') return 'zs';
   return null;
