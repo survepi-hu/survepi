@@ -264,8 +264,8 @@ describe('Alertes par e-mail', () => {
     const r3 = planEventAlerts({ now, reports: [{ ...soumis[0], statut: 'a_corriger' }], validations: [{ id: 10, report_id: 'f2', action: 'retourner', from_statut: 'valide_zs', actor_id: 'tl', commentaire: 'RA' }], actors: acteurs, zsList, settings: {} });
     expect(r3.map((r) => r.destinataire_id).sort()).toEqual(['ep', 'r1', 'r2', 'sub']);
     expect(r3[0].message).toContain('Merci de revoir le rapport');
-    // soumission ancienne (> 2 jours) : pas de mail
-    expect(planEventAlerts({ now, reports: [{ ...soumis[0], submitted_at: '2026-11-01T09:00:00Z' }], actors: acteurs, zsList, settings: {} })).toHaveLength(0);
+    // soumission ancienne (> 12 h) : pas de mail
+    expect(planEventAlerts({ now, reports: [{ ...soumis[0], submitted_at: '2026-11-11T09:00:00Z' }], actors: acteurs, zsList, settings: {} })).toHaveLength(0);
   });
   it('les lignes enregistrées ne gardent que les colonnes de la table', () => {
     const row = toNotifRow({ key: 'k', role: 'rapporteur', prevu_a: '12:00', secours: '+243', canal: 'email', statut: 'en_attente', message: 'm', date: '2026-11-08', step: 's', type: 't', mode: 'auto' });

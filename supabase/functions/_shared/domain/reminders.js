@@ -159,7 +159,8 @@ export function planEventAlerts({ now = new Date(), validations = [], reports = 
   const parUser = (uid) => uid ? actors.find((a) => a.user_id === uid) : null;
   const auteur = (r) => ['soumis', 'incomplet', 'a_corriger', 'valide_zs', 'valide_prov'].includes(r.statut) ? parUser(r.submitted_by || r.updated_by) : null;
   const titre = (zs, r, etat) => `SurvEpi - ${zs.nom} - ${fmtDate(r.date)} : ${etat}`;
-  const limite = new Date(now.getTime() - 2 * 864e5).toISOString();
+  // Événements récents seulement (le passage automatique tourne toutes les 5 min) : pas de rattrapage massif.
+  const limite = new Date(now.getTime() - 12 * 36e5).toISOString();
 
   // Soumission : le 1er validateur doit agir
   for (const r of reports) {
@@ -173,7 +174,7 @@ export function planEventAlerts({ now = new Date(), validations = [], reports = 
 
   for (const v of validations) {
     const r = repById[v.report_id]; const zs = r && zsById[r.zs_id];
-    if (!r || !zs) continue;
+    if (!r || !zs || (v.at && new Date(v.at).toISOString() < limite)) continue;
     const par = actById[v.actor_id];
     if (v.action === 'retourner') {
       const dest = [...rapporteurs(zs), auteur(r), ...(v.from_statut === 'valide_zs' ? niveau1(zs) : [])];
@@ -183,7 +184,7 @@ export function planEventAlerts({ now = new Date(), validations = [], reports = 
       for (const a of uniques(rapporteurs(zs))) envoyer(`evt|rouvert|${v.id}|${a.id}`, a, 'fiche_rouverte', zs, titre(zs, r, 'fiche rouverte'),
         `La fiche validée a été rouverte pour correction (modification tracée).${v.commentaire ? ` Motif : « ${v.commentaire} ».` : ''} ${lien}`);
     } else if (v.action === 'valider_zs') {
-      for (const a of uniques(niveau2(zs, v.actor_id))) envoyer(`evt|attente2|${v.id}|${a.id}`, a, 'validation_attendue', zs, titre(zs, r, '2e validation attendue'),
+      if (r.statut === 'valide_zs') for (const a of uniques(niveau2(zs, v.actor_id))) envoyer(`evt|attente2|${v.id}|${a.id}`, a, 'validation_attendue', zs, titre(zs, r, '2e validation attendue'),
         `${par ? `${par.nom} a fait` : 'La fiche a reçu'} la 1re validation (ZS). Merci de faire la 2e validation (province) ou de la retourner pour correction : ${lien}`);
       for (const a of uniques([...rapporteurs(zs), auteur(r)])) envoyer(`evt|valide|${v.id}|${a.id}`, a, 'validation_effectuee', zs, titre(zs, r, '1re validation faite'),
         'La fiche a reçu la 1re validation (ZS) et attend la 2e validation (province).');
