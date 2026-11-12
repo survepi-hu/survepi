@@ -100,6 +100,40 @@ export default function Parametres() {
         </Table>
         <p className="muted small">Aperçu du message : {renderMessage({ zs: z || { nom: 'Isiro' }, date: s.np.date, etat: 'incomplet', limite: f.heure_limite, manquants: ['Contacts vus', 'RECO actifs'] })}</p>
       </Section>
+      <Section title="Circuit de validation (e-mails)">
+        {(() => {
+          const ROLES_VAL = ['validateur', 'epidemiologiste', 'team_lead', 'admin'];
+          const eligibles = s.data.actors.filter((a) => a.actif !== false && (a.statut || 'actif') === 'actif' && ROLES_VAL.includes(a.role)).sort((a, b) => a.nom.localeCompare(b.nom));
+          const nomRole = (a) => `${a.nom} (${{ validateur: 'validateur', epidemiologiste: 'épidémiologiste', team_lead: 'team lead', admin: 'admin' }[a.role]})${a.email ? '' : ' : sans e-mail'}`;
+          const vz = f.validateurs_zs || {};
+          const setVz = (zsId, id) => { const n = { ...vz }; if (id) n[zsId] = [id]; else delete n[zsId]; setF({ ...f, validateurs_zs: n }); };
+          const prov = f.validateurs_prov || [];
+          const choix = (zsId, vide) => (
+            <select id={`val1-${zsId}`} value={(vz[zsId] || [])[0] || ''} disabled={ro} onChange={(e) => setVz(zsId, e.target.value)}>
+              <option value="">{vide}</option>
+              {eligibles.map((a) => <option key={a.id} value={a.id}>{nomRole(a)}</option>)}
+            </select>
+          );
+          return (
+            <>
+              <p className="muted small">Qui reçoit le mail quand une fiche est soumise (1re validation), puis quand elle attend la 2e validation. La personne qui a fait la 1re validation ne reçoit jamais le mail de la 2e.</p>
+              <Table className="compact">
+                <thead><tr><th>Zone de santé</th><th>1er validateur (ZS)</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>Toutes les autres ZS</strong></td><td>{choix('*', 'Par rôle (épidémiologiste, sinon validateurs)')}</td></tr>
+                  {s.data.zs.filter((z) => z.actif !== false).map((z) => <tr key={z.id}><td>{z.nom}</td><td>{choix(z.id, 'Comme « toutes les autres ZS »')}</td></tr>)}
+                </tbody>
+              </Table>
+              <div className="field wide"><span className="field-label">2e validateur (province)</span>
+                <div className="checks tight">{eligibles.map((a) => (
+                  <label key={a.id} className={`chk ${prov.includes(a.id) ? 'on' : ''}`}><input type="checkbox" disabled={ro} checked={prov.includes(a.id)} onChange={(e) => setF({ ...f, validateurs_prov: e.target.checked ? [...prov, a.id] : prov.filter((x) => x !== a.id) })} />{nomRole(a)}</label>
+                ))}</div>
+                <span className="field-hint">Aucune case cochée : les validateurs et le team lead reçoivent le mail. Penser à « Enregistrer les paramètres ».</span>
+              </div>
+            </>
+          );
+        })()}
+      </Section>
       {!ro && <div className="actions"><button className="btn ghost" onClick={() => setF({ ...f, rappels: DEFAULT_STEPS.map((x) => ({ ...x })) })}>Horaires du cahier des charges</button><button className="btn primary" onClick={() => s.actions.saveSettings(f)}>Enregistrer les paramètres</button></div>}
       <Section title="Sauvegarde nocturne (Google Drive)">
         {(() => {
