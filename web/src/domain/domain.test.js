@@ -267,6 +267,22 @@ describe('Alertes par e-mail', () => {
     // soumission ancienne (> 12 h) : pas de mail
     expect(planEventAlerts({ now, reports: [{ ...soumis[0], submitted_at: '2026-11-11T09:00:00Z' }], actors: acteurs, zsList, settings: {} })).toHaveLength(0);
   });
+  it('validateurs désignés par nom : par ZS au 1er niveau, liste au 2e niveau', () => {
+    const now = new Date('2026-11-12T10:00:00Z');
+    const acteurs = [...actors, { id: 'att', nom: 'Attah', role: 'validateur', email: 'a@x.cd' }, { id: 'kak', nom: 'Kakule', role: 'validateur', email: 'k@x.cd' },
+      { id: 'amo', nom: 'Amosi', role: 'admin', email: 'm@x.cd' }];
+    const zs2 = [...zsList, { id: 'wamba', nom: 'Wamba' }];
+    const settings = { validateurs_zs: { isiro: ['att'], '*': ['kak'] }, validateurs_prov: ['amo'] };
+    const fiches = [{ id: 'a', zs_id: 'isiro', date: '2026-11-12', statut: 'soumis', submitted_at: '2026-11-12T09:30:00Z' },
+      { id: 'b', zs_id: 'wamba', date: '2026-11-12', statut: 'soumis', submitted_at: '2026-11-12T09:30:00Z' }];
+    const r1 = planEventAlerts({ now, reports: fiches, actors: acteurs, zsList: zs2, settings });
+    expect(r1.map((r) => `${r.zs_id}:${r.destinataire_id}`).sort()).toEqual(['isiro:att', 'wamba:kak']);
+    const r2 = planEventAlerts({ now, reports: [{ ...fiches[0], statut: 'valide_zs' }], validations: [{ id: 1, report_id: 'a', action: 'valider_zs', actor_id: 'att' }], actors: acteurs, zsList: zs2, settings });
+    expect(r2.filter((r) => r.type === 'validation_attendue').map((r) => r.destinataire_id)).toEqual(['amo']);
+    // Amosi a fait la 1re validation : la 2e revient aux autres validateurs
+    const r3 = planEventAlerts({ now, reports: [{ ...fiches[0], statut: 'valide_zs' }], validations: [{ id: 2, report_id: 'a', action: 'valider_zs', actor_id: 'amo' }], actors: acteurs, zsList: zs2, settings });
+    expect(r3.filter((r) => r.type === 'validation_attendue').map((r) => r.destinataire_id).sort()).toEqual(['att', 'kak', 'tl']);
+  });
   it('les lignes enregistrées ne gardent que les colonnes de la table', () => {
     const row = toNotifRow({ key: 'k', role: 'rapporteur', prevu_a: '12:00', secours: '+243', canal: 'email', statut: 'en_attente', message: 'm', date: '2026-11-08', step: 's', type: 't', mode: 'auto' });
     expect(Object.keys(row).sort()).toEqual(['canal', 'date', 'key', 'message', 'mode', 'statut', 'step', 'type']);

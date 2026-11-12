@@ -154,8 +154,19 @@ export function planEventAlerts({ now = new Date(), validations = [], reports = 
   const uniques = (liste) => [...new Map(liste.filter(actif).map((a) => [a.id, a])).values()];
   const rapporteurs = (zs) => recipientsFor({ destinataires: ['rapporteur', 'suppleant'] }, zs, actors).map((d) => actById[d.id]).filter(Boolean);
   const parRole = (roles, zs) => actors.filter((a) => roles.includes(a.role) && actif(a) && (!a.zs_ids?.length || !zs || a.zs_ids.includes(zs.id) || ['team_lead', 'validateur', 'data_manager', 'admin'].includes(a.role)));
-  const niveau1 = (zs) => { const n = parRole(settings.roles_validation_zs || ['epidemiologiste'], zs); return n.length ? n : parRole(['validateur'], zs); };
-  const niveau2 = (zs, sauf) => parRole(settings.roles_validation_prov || ['validateur', 'team_lead'], zs).filter((a) => a.id !== sauf);
+  // Validateurs désignés par nom (paramètres) : validateurs_zs = { isiro: [id], '*': [id] }, validateurs_prov = [id].
+  // À défaut, par rôle. Le 2e niveau n'est jamais la personne qui a fait la 1re validation.
+  const parIds = (ids) => (ids || []).map((id) => actById[id]).filter(actif);
+  const niveau1 = (zs) => {
+    const m = settings.validateurs_zs; const n = m && typeof m === 'object' ? parIds(m[zs.id] || m['*']) : [];
+    if (n.length) return n;
+    const r = parRole(settings.roles_validation_zs || ['epidemiologiste'], zs); return r.length ? r : parRole(['validateur'], zs);
+  };
+  const niveau2 = (zs, sauf) => {
+    const liste = Array.isArray(settings.validateurs_prov) && settings.validateurs_prov.length ? parIds(settings.validateurs_prov) : parRole(settings.roles_validation_prov || ['validateur', 'team_lead'], zs);
+    const n = liste.filter((a) => a.id !== sauf);
+    return n.length ? n : parRole(['validateur', 'team_lead'], zs).filter((a) => a.id !== sauf);
+  };
   const parUser = (uid) => uid ? actors.find((a) => a.user_id === uid) : null;
   const auteur = (r) => ['soumis', 'incomplet', 'a_corriger', 'valide_zs', 'valide_prov'].includes(r.statut) ? parUser(r.submitted_by || r.updated_by) : null;
   const titre = (zs, r, etat) => `SurvEpi - ${zs.nom} - ${fmtDate(r.date)} : ${etat}`;
