@@ -247,10 +247,25 @@ describe('Alertes par e-mail', () => {
     const rows = planEventAlerts({ validations, reports, investigations, actors, zsList, settings: {} });
     const par = (t) => rows.filter((r) => r.type === t).map((r) => `${r.destinataire_id}:${r.canal}`).sort();
     expect(par('correction_demandee')).toEqual(['r1:email', 'r2:in_app']);
-    expect(par('validation_effectuee')).toEqual(['dm:email', 'r1:email', 'r2:in_app']);
+    expect(par('validation_effectuee')).toEqual(['dm:email', 'ep:email', 'r1:email', 'r2:in_app', 'tl:email']); // toute la chaîne
     expect(par('seuil_reports')).toEqual(['ep:email', 'tl:email']);
     const again = planEventAlerts({ validations, reports, investigations, actors, zsList, settings: {}, sentKeys: new Set(rows.map((r) => r.key)) });
     expect(again).toHaveLength(0);
+  });
+  it('circuit de validation : soumission -> 1er validateur, 1re validation -> 2e validateur, retour -> auteur', () => {
+    const now = new Date('2026-11-12T10:00:00Z');
+    const acteurs = [...actors, { id: 'sub', nom: 'Agent saisie', role: 'data_manager', user_id: 'u-sub', email: 'sub@x.cd', zs_ids: ['isiro'] }];
+    const soumis = [{ id: 'f2', zs_id: 'isiro', date: '2026-11-12', statut: 'soumis', submitted_at: '2026-11-12T09:30:00Z', updated_by: 'u-sub' }];
+    const r1 = planEventAlerts({ now, reports: soumis, actors: acteurs, zsList, settings: {} });
+    expect(r1.map((r) => `${r.type}:${r.destinataire_id}`)).toEqual(['validation_attendue:ep']);
+    expect(r1[0].message).toContain('Agent saisie a soumis');
+    const r2 = planEventAlerts({ now, reports: [{ ...soumis[0], statut: 'valide_zs' }], validations: [{ id: 9, report_id: 'f2', action: 'valider_zs', actor_id: 'ep' }], actors: acteurs, zsList, settings: {} });
+    expect(r2.filter((r) => r.type === 'validation_attendue').map((r) => r.destinataire_id)).toEqual(['tl']);
+    const r3 = planEventAlerts({ now, reports: [{ ...soumis[0], statut: 'a_corriger' }], validations: [{ id: 10, report_id: 'f2', action: 'retourner', from_statut: 'valide_zs', actor_id: 'tl', commentaire: 'RA' }], actors: acteurs, zsList, settings: {} });
+    expect(r3.map((r) => r.destinataire_id).sort()).toEqual(['ep', 'r1', 'r2', 'sub']);
+    expect(r3[0].message).toContain('Merci de revoir le rapport');
+    // soumission ancienne (> 2 jours) : pas de mail
+    expect(planEventAlerts({ now, reports: [{ ...soumis[0], submitted_at: '2026-11-01T09:00:00Z' }], actors: acteurs, zsList, settings: {} })).toHaveLength(0);
   });
   it('les lignes enregistrées ne gardent que les colonnes de la table', () => {
     const row = toNotifRow({ key: 'k', role: 'rapporteur', prevu_a: '12:00', secours: '+243', canal: 'email', statut: 'en_attente', message: 'm', date: '2026-11-08', step: 's', type: 't', mode: 'auto' });

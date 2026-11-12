@@ -130,35 +130,67 @@ export function planDeferralReminders({ now = new Date(), deferrals, actors, zsL
 
 /**
  * Alertes sur événement (cahier des charges, 17) envoyées par e-mail à chaque destinataire qui a une adresse
- * (sinon notification interne) : correction demandée, fiche validée ou rouverte, seuil de reports dépassé.
- * Clés stables (une seule alerte par événement), indépendantes du jour.
+ * (sinon notification interne). Circuit de la fiche :
+ *  - soumission (statut « soumis ») -> 1er validateur (niveau ZS) : action attendue ;
+ *  - 1re validation -> 2e validateur (niveau province, autre personne) : action attendue ;
+ *  - 2e validation -> toute la chaîne (rapporteur, suppléant, auteur, validateurs, data managers) ;
+ *  - retour pour correction -> rapporteur, suppléant et auteur de la soumission (+ 1er validateur si retour par la province) ;
+ *  - réouverture, seuil de reports dépassé.
+ * Clés stables (une seule alerte par événement et par destinataire), indépendantes du jour.
  */
 export function planEventAlerts({ now = new Date(), validations = [], reports = [], investigations = [], contacts = [], actors, zsList, settings, sentKeys = new Set() }) {
   const np = localParts(now, settings.fuseau);
   const zsById = Object.fromEntries(zsList.map((z) => [z.id, z]));
   const repById = Object.fromEntries(reports.map((r) => [r.id, r]));
+  const actById = Object.fromEntries(actors.map((a) => [a.id, a]));
+  const lien = settings.app_url || 'https://survepidemio.pages.dev';
   const out = [];
   const envoyer = (key, a, role, zs, sujet, corps) => {
-    if (!a || sentKeys.has(key)) return;
+    if (!a || sentKeys.has(key) || out.some((o) => o.key === key)) return;
     out.push({ key, date: np.date, zs_id: zs?.id || null, step: role, type: role, destinataire_id: a.id, nom: a.nom,
       canal: a.email ? 'email' : 'in_app', adresse: a.email || a.id, message: `${sujet}. ${corps}`, mode: 'auto', statut: a.email ? 'en_attente' : 'envoye' });
   };
-  const rapporteurs = (zs) => recipientsFor({ destinataires: ['rapporteur', 'suppleant'] }, zs, actors).map((d) => actors.find((a) => a.id === d.id)).filter(Boolean);
-  const parRole = (roles, zs) => actors.filter((a) => roles.includes(a.role) && (a.statut || 'actif') === 'actif' && (!a.zs_ids?.length || !zs || a.zs_ids.includes(zs.id) || ['team_lead', 'validateur', 'data_manager', 'admin'].includes(a.role)));
+  const actif = (a) => a && (a.statut || 'actif') === 'actif' && a.actif !== false;
+  const uniques = (liste) => [...new Map(liste.filter(actif).map((a) => [a.id, a])).values()];
+  const rapporteurs = (zs) => recipientsFor({ destinataires: ['rapporteur', 'suppleant'] }, zs, actors).map((d) => actById[d.id]).filter(Boolean);
+  const parRole = (roles, zs) => actors.filter((a) => roles.includes(a.role) && actif(a) && (!a.zs_ids?.length || !zs || a.zs_ids.includes(zs.id) || ['team_lead', 'validateur', 'data_manager', 'admin'].includes(a.role)));
+  const niveau1 = (zs) => { const n = parRole(settings.roles_validation_zs || ['epidemiologiste'], zs); return n.length ? n : parRole(['validateur'], zs); };
+  const niveau2 = (zs, sauf) => parRole(settings.roles_validation_prov || ['validateur', 'team_lead'], zs).filter((a) => a.id !== sauf);
+  const parUser = (uid) => uid ? actors.find((a) => a.user_id === uid) : null;
+  const auteur = (r) => ['soumis', 'incomplet', 'a_corriger', 'valide_zs', 'valide_prov'].includes(r.statut) ? parUser(r.submitted_by || r.updated_by) : null;
+  const titre = (zs, r, etat) => `SurvEpi - ${zs.nom} - ${fmtDate(r.date)} : ${etat}`;
+  const limite = new Date(now.getTime() - 2 * 864e5).toISOString();
+
+  // Soumission : le 1er validateur doit agir
+  for (const r of reports) {
+    const zs = zsById[r.zs_id]; const quand = r.resubmitted_at || r.submitted_at;
+    if (!zs || r.statut !== 'soumis' || !quand || new Date(quand).toISOString() < limite) continue;
+    const qui = auteur(r);
+    for (const a of uniques(niveau1(zs)).filter((x) => x.id !== qui?.id)) envoyer(`evt|soumis|${r.id}|${quand}|${a.id}`, a, 'validation_attendue', zs,
+      titre(zs, r, `fiche ${r.resubmitted_at ? 'resoumise' : 'soumise'}, 1re validation attendue`),
+      `${qui ? `${qui.nom} a soumis la fiche. ` : ''}Merci de la vérifier puis de faire la 1re validation (ZS) ou de la retourner pour correction : ${lien}`);
+  }
+
   for (const v of validations) {
     const r = repById[v.report_id]; const zs = r && zsById[r.zs_id];
     if (!r || !zs) continue;
-    const quand = fmtDate(r.date);
+    const par = actById[v.actor_id];
     if (v.action === 'retourner') {
-      for (const a of rapporteurs(zs)) envoyer(`evt|retour|${v.id}|${a.id}`, a, 'correction_demandee', zs, `SurvEpi - ${zs.nom} - ${quand} : correction demandée`,
-        `La fiche est retournée pour correction${v.commentaire ? ` : « ${v.commentaire} »` : ''}. Merci de corriger et de resoumettre.`);
+      const dest = [...rapporteurs(zs), auteur(r), ...(v.from_statut === 'valide_zs' ? niveau1(zs) : [])];
+      for (const a of uniques(dest).filter((x) => x.id !== v.actor_id)) envoyer(`evt|retour|${v.id}|${a.id}`, a, 'correction_demandee', zs, titre(zs, r, 'fiche rejetée, correction demandée'),
+        `${par ? `${par.nom} a retourné la fiche` : 'La fiche est retournée'} pour correction${v.commentaire ? ` : « ${v.commentaire} »` : ''}. Merci de revoir le rapport et de le resoumettre : ${lien}`);
     } else if (v.action === 'rouvrir') {
-      for (const a of rapporteurs(zs)) envoyer(`evt|rouvert|${v.id}|${a.id}`, a, 'fiche_rouverte', zs, `SurvEpi - ${zs.nom} - ${quand} : fiche rouverte`,
-        `La fiche validée a été rouverte pour correction (modification tracée).${v.commentaire ? ` Motif : « ${v.commentaire} ».` : ''}`);
-    } else if (v.action === 'valider_zs' || v.action === 'valider_prov') {
-      const niveau = v.action === 'valider_zs' ? '1re validation (ZS)' : '2e validation (province) : donnée officielle';
-      const dest = [...rapporteurs(zs), ...(v.action === 'valider_prov' ? parRole(['data_manager'], zs) : [])];
-      for (const a of dest) envoyer(`evt|valide|${v.id}|${a.id}`, a, 'validation_effectuee', zs, `SurvEpi - ${zs.nom} - ${quand} : fiche validée`, `${niveau}.`);
+      for (const a of uniques(rapporteurs(zs))) envoyer(`evt|rouvert|${v.id}|${a.id}`, a, 'fiche_rouverte', zs, titre(zs, r, 'fiche rouverte'),
+        `La fiche validée a été rouverte pour correction (modification tracée).${v.commentaire ? ` Motif : « ${v.commentaire} ».` : ''} ${lien}`);
+    } else if (v.action === 'valider_zs') {
+      for (const a of uniques(niveau2(zs, v.actor_id))) envoyer(`evt|attente2|${v.id}|${a.id}`, a, 'validation_attendue', zs, titre(zs, r, '2e validation attendue'),
+        `${par ? `${par.nom} a fait` : 'La fiche a reçu'} la 1re validation (ZS). Merci de faire la 2e validation (province) ou de la retourner pour correction : ${lien}`);
+      for (const a of uniques([...rapporteurs(zs), auteur(r)])) envoyer(`evt|valide|${v.id}|${a.id}`, a, 'validation_effectuee', zs, titre(zs, r, '1re validation faite'),
+        'La fiche a reçu la 1re validation (ZS) et attend la 2e validation (province).');
+    } else if (v.action === 'valider_prov') {
+      const chaine = [...rapporteurs(zs), auteur(r), actById[r.validated_zs_by], ...niveau1(zs), ...niveau2(zs), ...parRole(['data_manager'], zs)];
+      for (const a of uniques(chaine)) envoyer(`evt|valide|${v.id}|${a.id}`, a, 'validation_effectuee', zs, titre(zs, r, 'fiche validée'),
+        `2e validation (province) faite${par ? ` par ${par.nom}` : ''}. La fiche est validée : c'est désormais une donnée officielle.`);
     }
   }
   const seuil = Number(settings.seuil_escalade_reports ?? 2);

@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
   const seuil = Number(settings.seuil_escalade_reports ?? 2);
   const [{ data: validations }, { data: repsVal }, { data: invs }, { data: cts }] = await Promise.all([
     db.from('validations').select('*').gte('at', depuis),
-    db.from('daily_reports').select('id,zs_id,date').gte('updated_at', depuis),
+    db.from('daily_reports').select('id,zs_id,date,statut,submitted_at,resubmitted_at,updated_by,validated_zs_by').gte('updated_at', depuis),
     db.from('investigations').select('id,code,zs_id,statut,nb_reports').gte('nb_reports', seuil),
     db.from('contacts').select('id,code,zs_id,statut,nb_reports').gte('nb_reports', seuil),
   ]);
